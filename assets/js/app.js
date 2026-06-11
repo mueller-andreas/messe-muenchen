@@ -28,6 +28,7 @@
 
   const DATASET_PAGE =
     "https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen";
+  const DATASET_ID = "veranstaltungen-der-messe-muenchen";
   const RESOURCE_ID = "b698829c-b051-4092-a276-9ba1afdc12f3";
   const CSV_URL =
     "https://opendata.muenchen.de/dataset/ef068a1c-315c-4262-8cf1-903767831225/resource/" +
@@ -285,22 +286,74 @@
   }
 
   /* ------------------------------------------------------------------ *
-   *  Laden mit Fallback-Kette:
-   *  1) CKAN-Datastore-API (JSON)   2) Original-CSV
-   *  3) lokaler Snapshot im Repo    4) Datastore per JSONP
-   *  5) CORS-Proxys auf die CSV
+   *  Laden nach den CKAN-API-Regeln des Münchner Portals:
+   *
+   *  1) package_show liefert die Metadaten des Datensatzes – darunter für
+   *     jede Ressource die aktuelle Download-URL und das Flag
+   *     `datastore_active`. Erst damit ist klar, ob datastore_search
+   *     überhaupt erlaubt/sinnvoll ist (sonst antwortet CKAN mit 404).
+   *  2) Bevorzugt wird die Original-CSV (immer aktuelles Schema),
+   *     dann der gebündelte Snapshot, dann – nur falls aktiv – der
+   *     Datastore, JSONP und zuletzt CORS-Proxys.
+   *  3) Jede geladene Quelle wird gegen das erwartete Schema validiert;
+   *     fehlen Kernspalten (Titel, Jahr, Stadt, Besucher), wird die
+   *     nächste Quelle versucht statt eine halbleere Story zu rendern.
    * ------------------------------------------------------------------ */
 
+  const FETCH_TIMEOUT_MS = 8000;
+
+  async function fetchWithTimeout(url, opts) {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctrl && setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    try {
+      return await fetch(url, Object.assign({}, opts, ctrl ? { signal: ctrl.signal } : {}));
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async function fetchJson(url) {
-    const resp = await fetch(url, { headers: { Accept: "application/json" } });
+    const resp = await fetchWithTimeout(url, { headers: { Accept: "application/json" } });
     if (!resp.ok) throw new Error("HTTP " + resp.status + " für " + url);
     return resp.json();
   }
 
   async function fetchCsvRows(url) {
-    const resp = await fetch(url);
+    const resp = await fetchWithTimeout(url);
     if (!resp.ok) throw new Error("HTTP " + resp.status + " für " + url);
     return parseCsv(await resp.arrayBuffer());
+  }
+
+  // Prüft, ob eine geladene Quelle die Kernspalten des Datensatzes enthält.
+  function validateSource(headers) {
+    const cols = detectColumns(headers.filter((hh) => hh !== "_id"));
+    if (cols.name && cols.year && cols.city && cols.vis) return cols;
+    return null;
+  }
+
+  // Schritt 1 der API-Regeln: Metadaten holen, Ressource identifizieren.
+  let DISCOVERED_PKG = null;
+
+  async function discoverResource(attempts) {
+    for (const root of API_ROOTS) {
+      try {
+        const json = await fetchJson(root + "/package_show?id=" + DATASET_ID);
+        if (!json || !json.success || !json.result) {
+          throw new Error("API-Antwort ohne Ergebnis");
+        }
+        DISCOVERED_PKG = json.result;
+        const resources = json.result.resources || [];
+        const resource =
+          resources.find((r) => r.id === RESOURCE_ID) ||
+          resources.find((r) => /csv/i.test(r.format || "")) ||
+          resources[0] ||
+          null;
+        return { resource, root };
+      } catch (e) {
+        attempts.push("package_show (" + new URL(root).host + "): " + e.message);
+      }
+    }
+    return null;
   }
 
   // JSONP-Fallback: CKAN beantwortet GET-Anfragen mit ?callback=… auch ohne
@@ -366,53 +419,76 @@
   async function loadData() {
     const attempts = [];
 
-    // 1) CKAN-Datastore-API (alle bekannten API-Wurzeln)
-    for (const root of API_ROOTS) {
+    // 1) Metadaten-Discovery (package_show): aktuelle CSV-URL + datastore_active
+    const discovery = await discoverResource(attempts);
+    const resource = discovery && discovery.resource;
+    const datastoreActive = resource ? resource.datastore_active === true : null;
+
+    function finish(rows, headers, origin, via) {
+      const cols = validateSource(headers);
+      if (!cols) {
+        attempts.push(via + ": Kernspalten fehlen (Schema weicht ab) – übersprungen");
+        return null;
+      }
+      return { rows, headers, cols, origin, via };
+    }
+
+    // 2) Original-CSV (aktuelle URL aus den Metadaten, sonst bekannte URL)
+    const csvCandidates = [];
+    if (resource && resource.url) csvCandidates.push(resource.url);
+    if (!csvCandidates.includes(CSV_URL)) csvCandidates.push(CSV_URL);
+    for (const url of csvCandidates) {
       try {
-        const { rows, headers } = await fetchDatastore(root);
-        return { rows, headers, origin: "live", via: "Datastore-API" };
+        const rows = await fetchCsvRows(url);
+        const result = finish(rows, rows.columns, "live", "CSV-Download");
+        if (result) return result;
       } catch (e) {
-        attempts.push("Datastore (" + new URL(root).host + "): " + e.message);
+        attempts.push("CSV: " + e.message);
       }
     }
 
-    // 2) Original-CSV
-    try {
-      const rows = await fetchCsvRows(CSV_URL);
-      return { rows, headers: rows.columns, origin: "live", via: "CSV-Download" };
-    } catch (e) {
-      attempts.push("CSV: " + e.message);
-    }
-
-    // 3) lokaler Snapshot
+    // 3) gebündelter Snapshot (garantiert korrektes Schema)
     try {
       const rows = await fetchCsvRows(LOCAL_SNAPSHOT);
-      return { rows, headers: rows.columns, origin: "snapshot", via: "lokaler Snapshot" };
+      const result = finish(rows, rows.columns, "snapshot", "lokaler Snapshot");
+      if (result) return result;
     } catch (e) {
       attempts.push("Snapshot: " + e.message);
     }
 
-    // 4) Datastore-API per JSONP (umgeht fehlende CORS-Header)
-    for (const root of API_ROOTS) {
-      try {
-        const page = unpackDatastore(await fetchJsonp(datastoreUrl(root, 10000, 0)));
-        if (!page.records.length) throw new Error("keine Datensätze");
-        return {
-          rows: page.records,
-          headers: page.headers,
-          origin: "live",
-          via: "Datastore-API (JSONP)",
-        };
-      } catch (e) {
-        attempts.push("JSONP (" + new URL(root).host + "): " + e.message);
+    // 4) Datastore-API – nur wenn die Metadaten sie nicht ausschließen
+    if (datastoreActive === false) {
+      attempts.push("Datastore: laut Metadaten nicht aktiv – übersprungen");
+    } else {
+      for (const root of API_ROOTS) {
+        try {
+          const { rows, headers } = await fetchDatastore(root);
+          const result = finish(rows, headers, "live", "Datastore-API");
+          if (result) return result;
+        } catch (e) {
+          attempts.push("Datastore (" + new URL(root).host + "): " + e.message);
+        }
+      }
+
+      // 5) Datastore per JSONP (umgeht fehlende CORS-Header)
+      for (const root of API_ROOTS) {
+        try {
+          const page = unpackDatastore(await fetchJsonp(datastoreUrl(root, 10000, 0)));
+          if (!page.records.length) throw new Error("keine Datensätze");
+          const result = finish(page.records, page.headers, "live", "Datastore-API (JSONP)");
+          if (result) return result;
+        } catch (e) {
+          attempts.push("JSONP (" + new URL(root).host + "): " + e.message);
+        }
       }
     }
 
-    // 5) CORS-Proxys auf die Original-CSV
+    // 6) CORS-Proxys auf die Original-CSV
     for (const proxyUrl of PROXY_CSV_URLS) {
       try {
         const rows = await fetchCsvRows(proxyUrl);
-        return { rows, headers: rows.columns, origin: "live", via: "CSV via Proxy" };
+        const result = finish(rows, rows.columns, "live", "CSV via Proxy");
+        if (result) return result;
       } catch (e) {
         attempts.push("Proxy (" + new URL(proxyUrl).host + "): " + e.message);
       }
@@ -1384,19 +1460,18 @@
 
   async function loadMetadata() {
     try {
-      let json = null;
-      for (const root of API_ROOTS) {
-        try {
-          json = await fetchJson(
-            root + "/package_show?id=veranstaltungen-der-messe-muenchen"
-          );
-          if (json && json.success) break;
-        } catch (e) {
-          json = null;
+      let pkg = DISCOVERED_PKG; // bereits beim Laden per package_show geholt
+      if (!pkg) {
+        for (const root of API_ROOTS) {
+          try {
+            const json = await fetchJson(root + "/package_show?id=" + DATASET_ID);
+            if (json && json.success && json.result) { pkg = json.result; break; }
+          } catch (e) {
+            /* nächste Wurzel */
+          }
         }
       }
-      if (!json || !json.success || !json.result) return;
-      const pkg = json.result;
+      if (!pkg) return;
       if (pkg.license_title || pkg.license_id) {
         const licenseEl = document.getElementById("licenseInfo");
         const name = escapeHtml(pkg.license_title || pkg.license_id);
@@ -1472,6 +1547,34 @@
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => setTimeout(renderAllCharts, 120));
     });
+
+    // Charts neu zeichnen, wenn sich die Containerbreite nachträglich ändert
+    // (z. B. wenn Layout/Fonts auf Mobilgeräten erst nach dem ersten Rendern
+    // fertig sind oder das Gerät gedreht wird). Nur Breitenänderungen lösen
+    // aus, damit das Neuzeichnen selbst keine Schleife erzeugt.
+    if ("ResizeObserver" in window) {
+      const widths = new Map();
+      let pending = null;
+      const containers = document.querySelectorAll(".chart");
+      containers.forEach((c) =>
+        widths.set(c, Math.round(c.getBoundingClientRect().width))
+      );
+      const ro = new ResizeObserver((entries) => {
+        let changed = false;
+        for (const e of entries) {
+          const w = Math.round(e.contentRect.width);
+          if (widths.get(e.target) !== w) {
+            widths.set(e.target, w);
+            changed = true;
+          }
+        }
+        if (changed) {
+          clearTimeout(pending);
+          pending = setTimeout(renderAllCharts, 150);
+        }
+      });
+      containers.forEach((c) => ro.observe(c));
+    }
   }
 
   async function main() {
@@ -1479,8 +1582,7 @@
     const statusEl = document.getElementById("dataStatus");
 
     try {
-      const { rows, headers, origin, via } = await loadData();
-      const cols = detectColumns(headers.filter((hh) => hh !== "_id"));
+      const { rows, cols, origin, via } = await loadData();
       EVENTS = buildEvents(rows, cols);
       if (!EVENTS.length) throw new Error("Datensatz ist leer");
 
