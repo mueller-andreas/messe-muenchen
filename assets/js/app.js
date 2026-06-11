@@ -24,16 +24,18 @@
     "https://opendata.muenchen.de/dataset/ef068a1c-315c-4262-8cf1-903767831225/resource/" +
     RESOURCE_ID +
     "/download/veranstaltungsdaten.csv";
-  const DATASTORE_URL =
-    "https://opendata.muenchen.de/api/3/action/datastore_search?resource_id=" +
-    RESOURCE_ID +
-    "&limit=32000";
-  const PACKAGE_URL =
-    "https://opendata.muenchen.de/api/3/action/package_show?id=veranstaltungen-der-messe-muenchen";
+  // CKAN-API-Wurzeln: Das Münchner Portal verweist in seiner API-Hilfe
+  // (api_info-Snippet) für den Datastore auf www.opengov-muenchen.de.
+  const API_ROOTS = [
+    "https://www.opengov-muenchen.de/api/action",
+    "https://opendata.muenchen.de/api/3/action",
+  ];
   const LOCAL_SNAPSHOT = "data/veranstaltungsdaten.csv";
   // Letzter Ausweg, falls das Portal keine CORS-Header liefert:
-  const PROXY_CSV_URL =
-    "https://api.allorigins.win/raw?url=" + encodeURIComponent(CSV_URL);
+  const PROXY_CSV_URLS = [
+    "https://api.allorigins.win/raw?url=" + encodeURIComponent(CSV_URL),
+    "https://corsproxy.io/?url=" + encodeURIComponent(CSV_URL),
+  ];
 
   const COLORS = {
     munich: "#0a6ebd",
@@ -272,22 +274,77 @@
     return parseCsv(await resp.arrayBuffer());
   }
 
+  // JSONP-Fallback: CKAN beantwortet GET-Anfragen mit ?callback=… auch ohne
+  // CORS-Header, da die Antwort als <script> geladen wird.
+  function fetchJsonp(url, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const cb = "__ckanCb" + Math.random().toString(36).slice(2);
+      const script = document.createElement("script");
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error("JSONP-Timeout"));
+      }, timeoutMs || 8000);
+      function cleanup() {
+        clearTimeout(timer);
+        delete window[cb];
+        script.remove();
+      }
+      window[cb] = (data) => { cleanup(); resolve(data); };
+      script.onerror = () => { cleanup(); reject(new Error("JSONP-Fehler")); };
+      script.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
+      document.head.appendChild(script);
+    });
+  }
+
+  function datastoreUrl(root, limit, offset) {
+    return (
+      root + "/datastore_search?resource_id=" + RESOURCE_ID +
+      "&limit=" + limit + "&offset=" + offset
+    );
+  }
+
+  function unpackDatastore(json) {
+    if (!json || !json.success || !json.result) {
+      throw new Error("API-Antwort ohne Ergebnis");
+    }
+    const records = json.result.records || [];
+    const headers = json.result.fields
+      ? json.result.fields.map((f) => f.id)
+      : records.length
+        ? Object.keys(records[0])
+        : [];
+    const total = typeof json.result.total === "number" ? json.result.total : null;
+    return { records, headers, total };
+  }
+
+  async function fetchDatastore(root) {
+    const all = [];
+    let headers = null;
+    let offset = 0;
+    let total = Infinity;
+    while (offset < total && offset < 100000) {
+      const page = unpackDatastore(await fetchJson(datastoreUrl(root, 10000, offset)));
+      if (!headers) headers = page.headers;
+      all.push.apply(all, page.records);
+      total = page.total != null ? page.total : all.length;
+      if (!page.records.length) break;
+      offset = all.length;
+    }
+    if (!all.length) throw new Error("keine Datensätze");
+    return { rows: all, headers };
+  }
+
   async function loadData() {
     const attempts = [];
 
-    // 1) Datastore-API
-    try {
-      const json = await fetchJson(DATASTORE_URL);
-      const records = json && json.result && json.result.records;
-      if (json.success && records && records.length) {
-        const headers = json.result.fields
-          ? json.result.fields.map((f) => f.id)
-          : Object.keys(records[0]);
-        return { rows: records, headers, origin: "live", via: "Datastore-API" };
+    // 1) CKAN-Datastore-API (alle bekannten API-Wurzeln)
+    for (const root of API_ROOTS) {
+      try {
+        const { rows, headers } = await fetchDatastore(root);
+        return { rows, headers, origin: "live", via: "Datastore-API" };
+      } catch (e) {
+        attempts.push("Datastore (" + new URL(root).host + "): " + e.message);
       }
-      attempts.push("Datastore-API: keine Datensätze");
-    } catch (e) {
-      attempts.push("Datastore-API: " + e.message);
     }
 
     // 2) Original-CSV
@@ -306,12 +363,30 @@
       attempts.push("Snapshot: " + e.message);
     }
 
-    // 4) CORS-Proxy
-    try {
-      const rows = await fetchCsvRows(PROXY_CSV_URL);
-      return { rows, headers: rows.columns, origin: "live", via: "CSV via Proxy" };
-    } catch (e) {
-      attempts.push("Proxy: " + e.message);
+    // 4) Datastore-API per JSONP (umgeht fehlende CORS-Header)
+    for (const root of API_ROOTS) {
+      try {
+        const page = unpackDatastore(await fetchJsonp(datastoreUrl(root, 10000, 0)));
+        if (!page.records.length) throw new Error("keine Datensätze");
+        return {
+          rows: page.records,
+          headers: page.headers,
+          origin: "live",
+          via: "Datastore-API (JSONP)",
+        };
+      } catch (e) {
+        attempts.push("JSONP (" + new URL(root).host + "): " + e.message);
+      }
+    }
+
+    // 5) CORS-Proxys auf die Original-CSV
+    for (const proxyUrl of PROXY_CSV_URLS) {
+      try {
+        const rows = await fetchCsvRows(proxyUrl);
+        return { rows, headers: rows.columns, origin: "live", via: "CSV via Proxy" };
+      } catch (e) {
+        attempts.push("Proxy (" + new URL(proxyUrl).host + "): " + e.message);
+      }
     }
 
     const err = new Error("Alle Datenquellen fehlgeschlagen");
@@ -965,8 +1040,18 @@
 
   async function loadMetadata() {
     try {
-      const json = await fetchJson(PACKAGE_URL);
-      if (!json.success || !json.result) return;
+      let json = null;
+      for (const root of API_ROOTS) {
+        try {
+          json = await fetchJson(
+            root + "/package_show?id=veranstaltungen-der-messe-muenchen"
+          );
+          if (json && json.success) break;
+        } catch (e) {
+          json = null;
+        }
+      }
+      if (!json || !json.success || !json.result) return;
       const pkg = json.result;
       if (pkg.license_title || pkg.license_id) {
         const licenseEl = document.getElementById("licenseInfo");
