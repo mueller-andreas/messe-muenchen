@@ -1,7 +1,12 @@
 # Die Messe München in Zahlen 📊
 
-Eine interaktive Datengeschichte über die Veranstaltungen der Messe München seit 2018 –
-Besucher:innen, Aussteller und vermietete Flächen, visualisiert mit [D3.js](https://d3js.org).
+**Von Riem in die Welt:** Eine interaktive Datengeschichte über die Veranstaltungen der
+Messe München 2018–2026 – Standorte auf vier Kontinenten, Besucher:innen, Aussteller,
+Internationalität und Branchen, visualisiert mit [D3.js](https://d3js.org).
+
+**Hinweis zur Datenabdeckung:** Besucher-, Aussteller- und Flächenangaben enthält der
+Datensatz erst ab 2022; für 2018–2021 sind nur die Veranstaltungen selbst erfasst.
+Die Seite weist darauf an den betroffenen Stellen ausdrücklich hin.
 
 **Live-Seite:** <https://mueller-andreas.github.io/messe-muenchen/>
 
@@ -18,18 +23,13 @@ Die Seite lädt die Daten **beim Aufruf direkt im Browser** vom Open Data Portal
 zuerst über die CKAN-Datastore-API, ersatzweise als CSV-Download. Es findet keine
 serverseitige Verarbeitung statt; die Zahlen sind dadurch immer auf dem Stand des Portals.
 
-### Optionaler Daten-Snapshot
+### Daten-Snapshot
 
 Falls das Portal einmal nicht erreichbar ist (oder keine CORS-Header liefert), fällt die
-Seite auf einen lokalen Snapshot zurück. Dazu einfach die Original-CSV in dieses
-Repository legen:
-
-```
-data/veranstaltungsdaten.csv
-```
-
-Download der CSV: über die [Datensatzseite](https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen)
-→ Ressource „Veranstaltungsdaten“ → „Herunterladen“.
+Seite auf den Snapshot `data/veranstaltungsdaten.csv` in diesem Repository zurück.
+Zum Aktualisieren einfach die Original-CSV von der
+[Datensatzseite](https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen)
+neu herunterladen und die Datei ersetzen.
 
 ## Veröffentlichung (GitHub Pages)
 
