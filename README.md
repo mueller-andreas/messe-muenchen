@@ -3,8 +3,7 @@
 Eine interaktive Datengeschichte über die Veranstaltungen der Messe München seit 2018 –
 Besucher:innen, Aussteller und vermietete Flächen, visualisiert mit [D3.js](https://d3js.org).
 
-**Live-Seite:** nach Aktivierung von GitHub Pages unter
-`https://mueller-andreas.github.io/messe-muenchen/`
+**Live-Seite:** <https://mueller-andreas.github.io/messe-muenchen/>
 
 ## Datenquelle
 
@@ -32,16 +31,15 @@ data/veranstaltungsdaten.csv
 Download der CSV: über die [Datensatzseite](https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen)
 → Ressource „Veranstaltungsdaten“ → „Herunterladen“.
 
-## Veröffentlichen mit GitHub Pages
+## Veröffentlichung (GitHub Pages)
 
-Variante A (empfohlen, ohne Workflow):
+Die Seite wird vom Branch `gh-pages` ausgeliefert. Der Workflow
+`.github/workflows/deploy-pages.yml` spiegelt bei jedem Push auf `main`
+den Stand automatisch nach `gh-pages` – es ist kein Build-Schritt nötig.
 
-1. Branch in `main` mergen.
-2. Repo-Einstellungen → **Pages** → Source: **Deploy from a branch** → Branch `main`, Ordner `/ (root)`.
-
-Variante B: Repo-Einstellungen → **Pages** → Source: **GitHub Actions** –
-der enthaltene Workflow `.github/workflows/deploy-pages.yml` veröffentlicht
-dann bei jedem Push auf `main` automatisch.
+Falls die Pages-Quelle einmal manuell gesetzt werden muss:
+Repo-Einstellungen → **Pages** → Source: **Deploy from a branch** →
+Branch `gh-pages`, Ordner `/ (root)`.
 
 ## Lokal ansehen
 
