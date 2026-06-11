@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Interaktive Datengeschichte: Veranstaltungen der Messe München seit 2018 – Besucher, Aussteller und vermietete Flächen. Datenquelle: Open Data Portal München.">
+  <meta name="color-scheme" content="light">
+  <title>Die Messe München in Zahlen · Eine Datengeschichte</title>
+  <link rel="preload" href="assets/vendor/d3.v7.min.js" as="script">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📊</text></svg>">
+  <meta property="og:title" content="Die Messe München in Zahlen">
+  <meta property="og:description" content="Interaktive Visualisierung der Veranstaltungen der Messe München seit 2018 – basierend auf offenen Daten der Landeshauptstadt München.">
+  <meta property="og:type" content="website">
+</head>
+<body>
+
+  <!-- ======================= Navigation ======================= -->
+  <header class="site-nav" id="siteNav">
+    <a class="brand" href="#top">Messe&nbsp;München <span>in Zahlen</span></a>
+    <nav aria-label="Kapitel">
+      <a href="#kapitel-jahre">Jahre</a>
+      <a href="#kapitel-timeline">Timeline</a>
+      <a href="#kapitel-giganten">Top&nbsp;Events</a>
+      <a href="#kapitel-korrelation">Aussteller</a>
+      <a href="#kapitel-explorer">Explorer</a>
+      <a href="#quellen">Quellen</a>
+    </nav>
+  </header>
+
+  <!-- ======================= Hero ======================= -->
+  <main id="top">
+    <section class="hero">
+      <div class="hero-bg" aria-hidden="true">
+        <div class="blob blob-a"></div>
+        <div class="blob blob-b"></div>
+        <svg class="hero-grid" width="100%" height="100%" aria-hidden="true"></svg>
+      </div>
+      <div class="hero-inner">
+        <p class="kicker">Eine Datengeschichte · Open Data München</p>
+        <h1>Die Messe München<br><em>in Zahlen</em></h1>
+        <p class="lede">
+          Von <strong>bauma</strong> bis <strong>ISPO</strong>, von Riem bis Shanghai:
+          Dieser interaktive Bericht erzählt anhand offener Daten der Landeshauptstadt München,
+          wie sich die Veranstaltungen der Messe München seit 2018 entwickelt haben –
+          durch Boomjahre, eine Pandemie und die Erholung danach.
+        </p>
+
+        <div class="kpi-grid" id="kpiGrid" aria-live="polite">
+          <div class="kpi"><span class="kpi-value" data-kpi="events">–</span><span class="kpi-label">Veranstaltungen</span></div>
+          <div class="kpi"><span class="kpi-value" data-kpi="visitors">–</span><span class="kpi-label">Besucher:innen gesamt</span></div>
+          <div class="kpi"><span class="kpi-value" data-kpi="exhibitors">–</span><span class="kpi-label">Aussteller gesamt</span></div>
+          <div class="kpi"><span class="kpi-value" data-kpi="years">–</span><span class="kpi-label">Jahre im Datensatz</span></div>
+        </div>
+
+        <p class="hero-status" id="dataStatus" role="status">Lade Daten vom Open Data Portal München&nbsp;…</p>
+        <a class="scroll-hint" href="#kapitel-jahre" aria-label="Zur ersten Grafik scrollen">↓</a>
+      </div>
+    </section>
+
+    <!-- ======================= Fehlerzustand ======================= -->
+    <section class="error-panel" id="errorPanel" hidden>
+      <h2>Daten konnten nicht geladen werden</h2>
+      <p>
+        Die Live-Daten vom Open Data Portal München sind gerade nicht erreichbar
+        (z.&nbsp;B. wegen einer Netzwerk- oder CORS-Einschränkung) und es liegt kein
+        lokaler Daten-Snapshot vor.
+      </p>
+      <p>
+        Den Datensatz gibt es hier im Original:<br>
+        <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">
+          opendata.muenchen.de → Bisherige Veranstaltungen der Messe München
+        </a>
+      </p>
+      <p class="error-detail" id="errorDetail"></p>
+    </section>
+
+    <div id="storyRoot">
+
+      <!-- ======================= Kapitel 1 ======================= -->
+      <section class="chapter" id="kapitel-jahre">
+        <div class="chapter-text reveal">
+          <p class="chapter-no">Kapitel 1</p>
+          <h2>Boom, Bruch und Comeback</h2>
+          <p class="chapter-lede" id="narrativeYears">
+            Wie viele Messen, Kongresse und Gastveranstaltungen fanden pro Jahr statt?
+            Die Jahresbilanz zeigt den Rhythmus des Messegeschäfts – und macht sichtbar,
+            wie tief der Einschnitt der Corona-Jahre war.
+          </p>
+        </div>
+        <figure class="chart-card reveal">
+          <figcaption>
+            <span class="chart-title">Veranstaltungen pro Jahr</span>
+            <span class="chart-sub" id="subYears"></span>
+          </figcaption>
+          <div class="chart" id="chartYears" role="img" aria-label="Balkendiagramm: Anzahl der Veranstaltungen der Messe München pro Jahr"></div>
+          <div class="legend" id="legendYears"></div>
+          <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
+        </figure>
+      </section>
+
+      <!-- ======================= Kapitel 2 ======================= -->
+      <section class="chapter" id="kapitel-timeline">
+        <div class="chapter-text reveal">
+          <p class="chapter-no">Kapitel 2</p>
+          <h2>Jede Messe ein Punkt</h2>
+          <p class="chapter-lede" id="narrativeTimeline">
+            Jeder Kreis ist eine Veranstaltung: Die Position zeigt den Zeitpunkt,
+            die Höhe die Zahl der Besucher:innen, die Größe die vermietete Fläche.
+            Tippen oder zeigen Sie auf einen Punkt für Details.
+          </p>
+        </div>
+        <figure class="chart-card chart-card-wide reveal">
+          <figcaption>
+            <span class="chart-title">Besucher:innen je Veranstaltung im Zeitverlauf</span>
+            <span class="chart-sub" id="subTimeline"></span>
+          </figcaption>
+          <div class="chart chart-tall" id="chartTimeline" role="img" aria-label="Streudiagramm: Besucherzahlen einzelner Veranstaltungen über die Zeit"></div>
+          <div class="legend" id="legendTimeline"></div>
+          <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
+        </figure>
+      </section>
+
+      <!-- ======================= Kapitel 3 ======================= -->
+      <section class="chapter" id="kapitel-giganten">
+        <div class="chapter-text reveal">
+          <p class="chapter-no">Kapitel 3</p>
+          <h2>Die Giganten</h2>
+          <p class="chapter-lede" id="narrativeTop">
+            Einige wenige Leitmessen ziehen Hunderttausende an.
+            Das Ranking zeigt die besucherstärksten Veranstaltungen im Datensatz.
+          </p>
+        </div>
+        <figure class="chart-card reveal">
+          <figcaption>
+            <span class="chart-title">Top-Veranstaltungen nach Besucher:innen</span>
+            <span class="chart-sub" id="subTop"></span>
+          </figcaption>
+          <div class="chart" id="chartTop" role="img" aria-label="Balkendiagramm: Veranstaltungen mit den höchsten Besucherzahlen"></div>
+          <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
+        </figure>
+      </section>
+
+      <!-- ======================= Kapitel 4 ======================= -->
+      <section class="chapter" id="kapitel-korrelation">
+        <div class="chapter-text reveal">
+          <p class="chapter-no">Kapitel 4</p>
+          <h2>Aussteller &amp; Besucher</h2>
+          <p class="chapter-lede" id="narrativeScatter">
+            Ziehen mehr Aussteller auch mehr Publikum an? Jeder Punkt ist eine
+            Veranstaltung – beide Achsen sind logarithmisch skaliert, damit kleine
+            Kongresse und Mega-Messen auf ein Bild passen.
+          </p>
+        </div>
+        <figure class="chart-card reveal">
+          <figcaption>
+            <span class="chart-title">Aussteller vs. Besucher:innen</span>
+            <span class="chart-sub" id="subScatter"></span>
+          </figcaption>
+          <div class="chart chart-tall" id="chartScatter" role="img" aria-label="Streudiagramm: Zusammenhang zwischen Aussteller- und Besucherzahlen"></div>
+          <div class="legend" id="legendScatter"></div>
+          <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
+        </figure>
+      </section>
+
+      <!-- ======================= Kapitel 5: Explorer ======================= -->
+      <section class="chapter" id="kapitel-explorer">
+        <div class="chapter-text reveal">
+          <p class="chapter-no">Kapitel 5</p>
+          <h2>Selbst erkunden</h2>
+          <p class="chapter-lede">
+            Alle Veranstaltungen im Überblick – durchsuchbar und sortierbar.
+            Ein Klick auf eine Spaltenüberschrift sortiert die Tabelle.
+          </p>
+        </div>
+        <div class="chart-card reveal">
+          <div class="table-tools">
+            <input type="search" id="tableSearch" placeholder="Veranstaltung suchen …" aria-label="Tabelle durchsuchen">
+            <span class="table-count" id="tableCount"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="dataTable" aria-label="Alle Veranstaltungen der Messe München">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
+        </div>
+      </section>
+    </div>
+
+    <!-- ======================= Quellen & Methodik ======================= -->
+    <footer class="sources" id="quellen">
+      <h2>Quellen &amp; Methodik</h2>
+      <div class="sources-grid">
+        <div>
+          <h3>Datenquelle</h3>
+          <p>
+            <strong>„Bisherige Veranstaltungen der Messe München – Veranstaltungsdaten ab 2018“</strong><br>
+            Herausgeber: Messe München GmbH<br>
+            Bereitgestellt über das
+            <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal der Landeshauptstadt München</a>.
+          </p>
+          <p id="licenseInfo">
+            Lizenz und Nutzungsbedingungen: siehe Angaben auf der
+            <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Datensatzseite</a>.
+          </p>
+          <p id="freshnessInfo" class="muted"></p>
+        </div>
+        <div>
+          <h3>Methodik</h3>
+          <p>
+            Die Daten werden beim Aufruf dieser Seite direkt aus dem Open Data Portal
+            geladen (CKAN-Datastore-API bzw. CSV-Datei) und ausschließlich in Ihrem
+            Browser verarbeitet. Besucher-, Aussteller- und Flächenangaben stammen
+            unverändert aus dem Datensatz; fehlende Werte werden in den jeweiligen
+            Grafiken ausgelassen und nicht geschätzt.
+          </p>
+          <p>
+            Erstellt mit <a href="https://d3js.org" rel="noopener">D3.js</a> (ISC-Lizenz).
+            Der Quellcode dieser Seite ist offen auf
+            <a href="https://github.com/mueller-andreas/messe-muenchen" rel="noopener">GitHub</a> einsehbar.
+          </p>
+        </div>
+      </div>
+      <p class="colophon">
+        Diese Seite ist ein unabhängiges Open-Data-Projekt und steht in keiner Verbindung
+        zur Messe München GmbH oder zur Landeshauptstadt München.
+      </p>
+    </footer>
+  </main>
+
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+  <script src="assets/vendor/d3.v7.min.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
