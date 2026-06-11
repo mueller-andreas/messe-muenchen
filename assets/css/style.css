@@ -194,6 +194,12 @@ h1 em {
   color: var(--muted);
 }
 
+.kpi-footnote {
+  margin: 0.6rem 0 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
 .hero-status {
   margin-top: 1.6rem;
   font-size: 0.85rem;
@@ -312,6 +318,35 @@ h1 em {
   font-size: 0.74rem;
   color: var(--muted);
 }
+
+.chart-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+.chart-note:empty { display: none; }
+
+/* ---------- Kontext-Fakten ("Zum Einordnen") ---------- */
+
+.context-fact {
+  margin: 1.4rem 0 0;
+  padding: 1.1rem 1.4rem;
+  background: linear-gradient(120deg, #fdf8ee, #f4f9f7);
+  border: 1px solid #ecdfc4;
+  border-radius: var(--radius);
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+.context-fact p { margin: 0; }
+.context-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--gold);
+  margin: 0 0 0.35rem !important;
+}
+.context-sources { display: block; margin-top: 0.4rem; font-size: 0.76rem; color: var(--muted); }
 
 /* ---------- SVG-Elemente ---------- */
 
@@ -439,6 +474,8 @@ h1 em {
   .sources-grid { grid-template-columns: 1fr 1fr; }
 }
 .sources > h2 { max-width: var(--maxw); margin-left: auto; margin-right: auto; }
+
+.sources-list { font-size: 0.85rem; }
 
 .colophon {
   max-width: var(--maxw);

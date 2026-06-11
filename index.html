@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Interaktive Datengeschichte: Veranstaltungen der Messe München seit 2018 – Besucher, Aussteller und vermietete Flächen. Datenquelle: Open Data Portal München.">
+  <meta name="description" content="Interaktive Datengeschichte: Die Veranstaltungen der Messe München 2018–2026 weltweit – Standorte, Besucher, Aussteller, Branchen. Datenquelle: Open Data Portal München.">
   <meta name="color-scheme" content="light">
   <title>Die Messe München in Zahlen · Eine Datengeschichte</title>
   <link rel="preload" href="assets/vendor/d3.v7.min.js" as="script">
   <link rel="stylesheet" href="assets/css/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📊</text></svg>">
   <meta property="og:title" content="Die Messe München in Zahlen">
-  <meta property="og:description" content="Interaktive Visualisierung der Veranstaltungen der Messe München seit 2018 – basierend auf offenen Daten der Landeshauptstadt München.">
+  <meta property="og:description" content="Von Riem in die Welt: Interaktive Visualisierung der Veranstaltungen der Messe München – basierend auf offenen Daten der Landeshauptstadt München.">
   <meta property="og:type" content="website">
 </head>
 <body>
@@ -20,9 +20,10 @@
     <a class="brand" href="#top">Messe&nbsp;München <span>in Zahlen</span></a>
     <nav aria-label="Kapitel">
       <a href="#kapitel-jahre">Jahre</a>
-      <a href="#kapitel-timeline">Timeline</a>
+      <a href="#kapitel-welt">Weltweit</a>
       <a href="#kapitel-giganten">Top&nbsp;Events</a>
-      <a href="#kapitel-korrelation">Aussteller</a>
+      <a href="#kapitel-international">International</a>
+      <a href="#kapitel-branchen">Branchen</a>
       <a href="#kapitel-explorer">Explorer</a>
       <a href="#quellen">Quellen</a>
     </nav>
@@ -34,24 +35,25 @@
       <div class="hero-bg" aria-hidden="true">
         <div class="blob blob-a"></div>
         <div class="blob blob-b"></div>
-        <svg class="hero-grid" width="100%" height="100%" aria-hidden="true"></svg>
       </div>
       <div class="hero-inner">
         <p class="kicker">Eine Datengeschichte · Open Data München</p>
-        <h1>Die Messe München<br><em>in Zahlen</em></h1>
+        <h1>Von Riem<br><em>in die Welt</em></h1>
         <p class="lede">
-          Von <strong>bauma</strong> bis <strong>ISPO</strong>, von Riem bis Shanghai:
-          Dieser interaktive Bericht erzählt anhand offener Daten der Landeshauptstadt München,
-          wie sich die Veranstaltungen der Messe München seit 2018 entwickelt haben –
-          durch Boomjahre, eine Pandemie und die Erholung danach.
+          Die Messe München ist weit mehr als ihr Heimatgelände im Münchner Osten:
+          Von der <strong>bauma</strong> in Riem über die <strong>bauma CHINA</strong> in Shanghai
+          bis zur <strong>drink technology India</strong> in Mumbai zeigt der offene Datensatz
+          der Landeshauptstadt München, wie ein Messekonzern auf vier Kontinenten arbeitet –
+          und wie er den Corona-Einschnitt überstanden hat.
         </p>
 
         <div class="kpi-grid" id="kpiGrid" aria-live="polite">
-          <div class="kpi"><span class="kpi-value" data-kpi="events">–</span><span class="kpi-label">Veranstaltungen</span></div>
-          <div class="kpi"><span class="kpi-value" data-kpi="visitors">–</span><span class="kpi-label">Besucher:innen gesamt</span></div>
-          <div class="kpi"><span class="kpi-value" data-kpi="exhibitors">–</span><span class="kpi-label">Aussteller gesamt</span></div>
-          <div class="kpi"><span class="kpi-value" data-kpi="years">–</span><span class="kpi-label">Jahre im Datensatz</span></div>
+          <div class="kpi"><span class="kpi-value" data-kpi="events">–</span><span class="kpi-label">Veranstaltungen 2018–2026</span></div>
+          <div class="kpi"><span class="kpi-value" data-kpi="cities">–</span><span class="kpi-label">Städte weltweit</span></div>
+          <div class="kpi"><span class="kpi-value" data-kpi="visitors">–</span><span class="kpi-label">Besucher:innen seit 2022*</span></div>
+          <div class="kpi"><span class="kpi-value" data-kpi="exhibitors">–</span><span class="kpi-label">Aussteller seit 2022*</span></div>
         </div>
+        <p class="kpi-footnote">* Besucher- und Ausstellerzahlen sind im Datensatz erst ab 2022 erfasst.</p>
 
         <p class="hero-status" id="dataStatus" role="status">Lade Daten vom Open Data Portal München&nbsp;…</p>
         <a class="scroll-hint" href="#kapitel-jahre" aria-label="Zur ersten Grafik scrollen">↓</a>
@@ -63,8 +65,7 @@
       <h2>Daten konnten nicht geladen werden</h2>
       <p>
         Die Live-Daten vom Open Data Portal München sind gerade nicht erreichbar
-        (z.&nbsp;B. wegen einer Netzwerk- oder CORS-Einschränkung) und es liegt kein
-        lokaler Daten-Snapshot vor.
+        und auch der Daten-Snapshot in diesem Repository konnte nicht gelesen werden.
       </p>
       <p>
         Den Datensatz gibt es hier im Original:<br>
@@ -77,15 +78,15 @@
 
     <div id="storyRoot">
 
-      <!-- ======================= Kapitel 1 ======================= -->
+      <!-- ======================= Kapitel 1: Jahre ======================= -->
       <section class="chapter" id="kapitel-jahre">
         <div class="chapter-text reveal">
           <p class="chapter-no">Kapitel 1</p>
-          <h2>Boom, Bruch und Comeback</h2>
+          <h2>Der Takt der Messejahre</h2>
           <p class="chapter-lede" id="narrativeYears">
-            Wie viele Messen, Kongresse und Gastveranstaltungen fanden pro Jahr statt?
-            Die Jahresbilanz zeigt den Rhythmus des Messegeschäfts – und macht sichtbar,
-            wie tief der Einschnitt der Corona-Jahre war.
+            Wie viele Messen richtet die Messe München pro Jahr aus – zu Hause und in der Welt?
+            Die Jahresbilanz zeigt den Rhythmus des Geschäfts: den Einbruch der Corona-Jahre
+            2020/21 und den dichten Kalender danach.
           </p>
         </div>
         <figure class="chart-card reveal">
@@ -93,21 +94,55 @@
             <span class="chart-title">Veranstaltungen pro Jahr</span>
             <span class="chart-sub" id="subYears"></span>
           </figcaption>
-          <div class="chart" id="chartYears" role="img" aria-label="Balkendiagramm: Anzahl der Veranstaltungen der Messe München pro Jahr"></div>
+          <div class="chart" id="chartYears" role="img" aria-label="Balkendiagramm: Anzahl der Veranstaltungen der Messe München pro Jahr, unterteilt nach Deutschland und Ausland"></div>
           <div class="legend" id="legendYears"></div>
+          <p class="chart-note" id="noteYears"></p>
           <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
         </figure>
       </section>
 
-      <!-- ======================= Kapitel 2 ======================= -->
-      <section class="chapter" id="kapitel-timeline">
+      <!-- ======================= Kapitel 2: Weltkarte der Standorte ======================= -->
+      <section class="chapter" id="kapitel-welt">
         <div class="chapter-text reveal">
           <p class="chapter-no">Kapitel 2</p>
+          <h2>Zwei Drittel der Messen finden nicht in München statt</h2>
+          <p class="chapter-lede" id="narrativeCities">
+            Die überraschendste Zahl des Datensatzes: München ist nur einer von vielen
+            Standorten. Shanghai ist der zweitwichtigste Messeplatz des Konzerns,
+            Indien mit gleich sechs Städten ein eigener Schwerpunktmarkt.
+          </p>
+        </div>
+        <figure class="chart-card reveal">
+          <figcaption>
+            <span class="chart-title">Veranstaltungen nach Stadt</span>
+            <span class="chart-sub" id="subCities"></span>
+          </figcaption>
+          <div class="chart" id="chartCities" role="img" aria-label="Balkendiagramm: Anzahl der Veranstaltungen je Stadt"></div>
+          <div class="legend" id="legendCities"></div>
+          <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
+        </figure>
+        <aside class="context-fact reveal">
+          <p class="context-kicker">Zum Einordnen</p>
+          <p>
+            Das Heimatgelände in München-Riem gehört zu den modernsten der Welt:
+            18 Hallen mit rund 200.000&nbsp;m² Hallenfläche plus 414.000&nbsp;m² Freigelände.
+            <span class="context-sources">Quellen:
+              <a href="https://de.wikipedia.org/wiki/Messe_M%C3%BCnchen_(Gel%C3%A4nde)" rel="noopener">Wikipedia</a>,
+              <a href="https://locations.messe-muenchen.de/en/messe-muenchen/" rel="noopener">messe-muenchen.de</a>
+            </span>
+          </p>
+        </aside>
+      </section>
+
+      <!-- ======================= Kapitel 3: Besucher-Timeline ======================= -->
+      <section class="chapter" id="kapitel-timeline">
+        <div class="chapter-text reveal">
+          <p class="chapter-no">Kapitel 3</p>
           <h2>Jede Messe ein Punkt</h2>
           <p class="chapter-lede" id="narrativeTimeline">
-            Jeder Kreis ist eine Veranstaltung: Die Position zeigt den Zeitpunkt,
-            die Höhe die Zahl der Besucher:innen, die Größe die vermietete Fläche.
-            Tippen oder zeigen Sie auf einen Punkt für Details.
+            Seit 2022 weist der Datensatz Besucherzahlen aus. Jeder Kreis ist eine
+            Veranstaltung: Die Höhe zeigt die Besucher:innen, die Größe die vermietete
+            Nettofläche. Tippen oder zeigen Sie auf einen Punkt für Details.
           </p>
         </div>
         <figure class="chart-card chart-card-wide reveal">
@@ -115,20 +150,33 @@
             <span class="chart-title">Besucher:innen je Veranstaltung im Zeitverlauf</span>
             <span class="chart-sub" id="subTimeline"></span>
           </figcaption>
-          <div class="chart chart-tall" id="chartTimeline" role="img" aria-label="Streudiagramm: Besucherzahlen einzelner Veranstaltungen über die Zeit"></div>
+          <div class="chart chart-tall" id="chartTimeline" role="img" aria-label="Streudiagramm: Besucherzahlen einzelner Veranstaltungen seit 2022"></div>
           <div class="legend" id="legendTimeline"></div>
+          <p class="chart-note">Für die Jahre 2018–2021 enthält der Datensatz keine Besucher-, Aussteller- oder Flächenangaben.</p>
           <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
         </figure>
+        <aside class="context-fact reveal">
+          <p class="context-kicker">Zum Einordnen</p>
+          <p>
+            Der höchste Punkt ist kein Ausreißer: Die bauma gilt als größte Messe der Welt.
+            Zur bauma 2025 kamen rund 600.000 Besucher:innen aus über 200 Ländern auf
+            614.000&nbsp;m² Gesamtfläche – etwa 86 Fußballfelder.
+            <span class="context-sources">Quellen:
+              <a href="https://bauma.de/en/trade-fair/data/numbers/" rel="noopener">bauma.de</a>,
+              <a href="https://www.deutsches-ingenieurblatt.de/bauma-2025-globale-leitmesse-zieht-600-000-besucher-an/" rel="noopener">Deutsches Ingenieurblatt</a>
+            </span>
+          </p>
+        </aside>
       </section>
 
-      <!-- ======================= Kapitel 3 ======================= -->
+      <!-- ======================= Kapitel 4: Giganten ======================= -->
       <section class="chapter" id="kapitel-giganten">
         <div class="chapter-text reveal">
-          <p class="chapter-no">Kapitel 3</p>
+          <p class="chapter-no">Kapitel 4</p>
           <h2>Die Giganten</h2>
           <p class="chapter-lede" id="narrativeTop">
             Einige wenige Leitmessen ziehen Hunderttausende an.
-            Das Ranking zeigt die besucherstärksten Veranstaltungen im Datensatz.
+            Das Ranking zeigt die besucherstärksten Veranstaltungen seit 2022.
           </p>
         </div>
         <figure class="chart-card reveal">
@@ -141,32 +189,76 @@
         </figure>
       </section>
 
-      <!-- ======================= Kapitel 4 ======================= -->
-      <section class="chapter" id="kapitel-korrelation">
+      <!-- ======================= Kapitel 5: Internationalität ======================= -->
+      <section class="chapter" id="kapitel-international">
         <div class="chapter-text reveal">
-          <p class="chapter-no">Kapitel 4</p>
-          <h2>Aussteller &amp; Besucher</h2>
-          <p class="chapter-lede" id="narrativeScatter">
-            Ziehen mehr Aussteller auch mehr Publikum an? Jeder Punkt ist eine
-            Veranstaltung – beide Achsen sind logarithmisch skaliert, damit kleine
-            Kongresse und Mega-Messen auf ein Bild passen.
+          <p class="chapter-no">Kapitel 5</p>
+          <h2>Die Aussteller reisen weiter als das Publikum</h2>
+          <p class="chapter-lede" id="narrativeIntl">
+            Der Datensatz unterscheidet bei Besucher:innen und Ausstellern zwischen In-
+            und Ausland. Das Muster bei den Münchner Messen: Auf der Standfläche ist die
+            Welt zu Gast – durchs Drehkreuz kommt vor allem das heimische Publikum.
+            Besonders krass ist der Unterschied bei Publikumsmessen wie der f.re.e.
           </p>
         </div>
         <figure class="chart-card reveal">
           <figcaption>
-            <span class="chart-title">Aussteller vs. Besucher:innen</span>
+            <span class="chart-title">Auslandsanteil bei Ausstellern und Besucher:innen</span>
+            <span class="chart-sub" id="subIntl"></span>
+          </figcaption>
+          <div class="chart" id="chartIntl" role="img" aria-label="Hanteldiagramm: Anteil ausländischer Aussteller und Besucher je Veranstaltung"></div>
+          <div class="legend" id="legendIntl"></div>
+          <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
+        </figure>
+      </section>
+
+      <!-- ======================= Kapitel 6: Publikum ======================= -->
+      <section class="chapter" id="kapitel-publikum">
+        <div class="chapter-text reveal">
+          <p class="chapter-no">Kapitel 6</p>
+          <h2>Fachpublikum oder Familienausflug?</h2>
+          <p class="chapter-lede" id="narrativeScatter">
+            Der Datensatz kennt den Messetyp: nur Fachbesucher, gemischt oder reine
+            Publikumsmesse. Im Verhältnis von Besucher:innen zu Ausstellern zeigen sich
+            zwei völlig verschiedene Geschäftsmodelle – beide Achsen sind logarithmisch.
+          </p>
+        </div>
+        <figure class="chart-card reveal">
+          <figcaption>
+            <span class="chart-title">Aussteller vs. Besucher:innen nach Messetyp</span>
             <span class="chart-sub" id="subScatter"></span>
           </figcaption>
-          <div class="chart chart-tall" id="chartScatter" role="img" aria-label="Streudiagramm: Zusammenhang zwischen Aussteller- und Besucherzahlen"></div>
+          <div class="chart chart-tall" id="chartScatter" role="img" aria-label="Streudiagramm: Zusammenhang zwischen Aussteller- und Besucherzahlen, eingefärbt nach Messetyp"></div>
           <div class="legend" id="legendScatter"></div>
           <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
         </figure>
       </section>
 
-      <!-- ======================= Kapitel 5: Explorer ======================= -->
+      <!-- ======================= Kapitel 7: Branchen ======================= -->
+      <section class="chapter" id="kapitel-branchen">
+        <div class="chapter-text reveal">
+          <p class="chapter-no">Kapitel 7</p>
+          <h2>Vom Bagger bis zum Laser</h2>
+          <p class="chapter-lede" id="narrativeBranchen">
+            Jede Veranstaltung ist im Datensatz einem oder mehreren Branchenschwerpunkten
+            zugeordnet. Das Ranking zeigt, welche Industrien das Messeprogramm prägen.
+          </p>
+        </div>
+        <figure class="chart-card reveal">
+          <figcaption>
+            <span class="chart-title">Häufigste Branchenschwerpunkte</span>
+            <span class="chart-sub" id="subBranchen"></span>
+          </figcaption>
+          <div class="chart" id="chartBranchen" role="img" aria-label="Balkendiagramm: Anzahl der Veranstaltungen je Branchenschwerpunkt"></div>
+          <p class="chart-note">Mehrfachzuordnungen möglich – eine Messe kann mehrere Branchenschwerpunkte haben.</p>
+          <p class="source-note">Quelle: Messe München GmbH · <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Open Data Portal München</a></p>
+        </figure>
+      </section>
+
+      <!-- ======================= Kapitel 8: Explorer ======================= -->
       <section class="chapter" id="kapitel-explorer">
         <div class="chapter-text reveal">
-          <p class="chapter-no">Kapitel 5</p>
+          <p class="chapter-no">Kapitel 8</p>
           <h2>Selbst erkunden</h2>
           <p class="chapter-lede">
             Alle Veranstaltungen im Überblick – durchsuchbar und sortierbar.
@@ -175,7 +267,7 @@
         </div>
         <div class="chart-card reveal">
           <div class="table-tools">
-            <input type="search" id="tableSearch" placeholder="Veranstaltung suchen …" aria-label="Tabelle durchsuchen">
+            <input type="search" id="tableSearch" placeholder="Messe, Stadt oder Jahr suchen …" aria-label="Tabelle durchsuchen">
             <span class="table-count" id="tableCount"></span>
           </div>
           <div class="table-wrap">
@@ -206,15 +298,27 @@
             <a href="https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen" rel="noopener">Datensatzseite</a>.
           </p>
           <p id="freshnessInfo" class="muted"></p>
+          <h3>Ergänzende Quellen</h3>
+          <p class="sources-list">
+            Gelände-Daten: <a href="https://de.wikipedia.org/wiki/Messe_M%C3%BCnchen_(Gel%C3%A4nde)" rel="noopener">Wikipedia: Messe München (Gelände)</a>,
+            <a href="https://locations.messe-muenchen.de/en/messe-muenchen/" rel="noopener">Trade Fair Center Messe München</a> ·
+            bauma 2025: <a href="https://bauma.de/en/trade-fair/data/numbers/" rel="noopener">bauma.de – facts</a>,
+            <a href="https://www.deutsches-ingenieurblatt.de/bauma-2025-globale-leitmesse-zieht-600-000-besucher-an/" rel="noopener">Deutsches Ingenieurblatt</a>
+          </p>
         </div>
         <div>
           <h3>Methodik</h3>
           <p>
             Die Daten werden beim Aufruf dieser Seite direkt aus dem Open Data Portal
-            geladen (CKAN-Datastore-API bzw. CSV-Datei) und ausschließlich in Ihrem
-            Browser verarbeitet. Besucher-, Aussteller- und Flächenangaben stammen
-            unverändert aus dem Datensatz; fehlende Werte werden in den jeweiligen
-            Grafiken ausgelassen und nicht geschätzt.
+            geladen (CKAN-Datastore-API bzw. CSV) und ausschließlich in Ihrem Browser
+            verarbeitet. Alle Kennzahlen stammen unverändert aus dem Datensatz; fehlende
+            Werte werden ausgelassen und nicht geschätzt.
+          </p>
+          <p>
+            <strong>Wichtig zur Abdeckung:</strong> Besucher-, Aussteller- und
+            Flächenangaben liegen erst für Veranstaltungen ab 2022 vor; für 2018–2021
+            enthält der Datensatz nur die Veranstaltungen selbst. Das laufende Jahr ist
+            unvollständig. Summen und Rankings beziehen sich daher auf die Jahre ab 2022.
           </p>
           <p>
             Erstellt mit <a href="https://d3js.org" rel="noopener">D3.js</a> (ISC-Lizenz).

@@ -1,9 +1,18 @@
 /* ==========================================================================
-   Die Messe München in Zahlen
+   Die Messe München in Zahlen — Von Riem in die Welt
    --------------------------------------------------------------------------
    Lädt die offenen Daten "Bisherige Veranstaltungen der Messe München"
    (Open Data Portal München) direkt im Browser und rendert daraus eine
    interaktive Datengeschichte mit D3.js.
+
+   Spalten des Datensatzes (Stand 2026):
+   langtitel; kurztitel; veranstaltungsjahr; veranstaltungsmonat; startdatum;
+   enddatum; stadt; land; messegelaende; turnus; branchenschwerpunkte;
+   veranstaltername; messetyp; nettoflaeche; aussteller_gesamt;
+   aussteller_inland; aussteller_ausland; besucher_gesamt; besucher_inland;
+   besucher_ausland
+
+   Wichtig: Besucher-, Aussteller- und Flächenangaben liegen erst ab 2022 vor.
 
    Datenquelle:
    https://opendata.muenchen.de/dataset/veranstaltungen-der-messe-muenchen
@@ -38,12 +47,17 @@
   ];
 
   const COLORS = {
-    munich: "#0a6ebd",
-    other: "#16a3a3",
-    single: "#0a6ebd",
+    de: "#0a6ebd",       // Deutschland
+    munich: "#0a6ebd",   // München (= Deutschland-Blau)
+    deOther: "#7fb2dd",  // Deutschland außerhalb Münchens
+    abroad: "#16a3a3",   // Ausland
+    fach: "#0a6ebd",     // Messetyp: Fachbesucher
+    mixed: "#d9a441",    // Messetyp: Fach- und Privatbesucher
+    privat: "#e8643c",   // Messetyp: Privatbesucher
+    unknown: "#9aa3b5",
+    exhibitors: "#0a6ebd",
+    visitors: "#e8643c",
     bar: "#0a6ebd",
-    barSoft: "#9cc8e8",
-    warm: "#e8643c",
   };
 
   const fmtInt = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
@@ -58,6 +72,10 @@
     return fmtInt.format(n);
   }
 
+  function fmtPct(x) {
+    return fmtInt.format(Math.round(x * 100)) + " %";
+  }
+
   /* ------------------------------------------------------------------ *
    *  Robustes Parsen (deutsche Zahlen-/Datumsformate, Encoding, Delimiter)
    * ------------------------------------------------------------------ */
@@ -68,12 +86,11 @@
     let s = String(v).trim();
     if (!s || /^(k\.?\s?a\.?|n\/?\s?a|-+|–|\.|x)$/i.test(s)) return null;
     s = s.replace(/[^\d,.\-]/g, "");
-    if (!s || s === "-" ) return null;
+    if (!s || s === "-") return null;
     const hasComma = s.includes(",");
     const hasDot = s.includes(".");
     if (hasComma && hasDot) {
-      // deutsches Format: 1.234.567,8
-      s = s.replace(/\./g, "").replace(",", ".");
+      s = s.replace(/\./g, "").replace(",", "."); // 1.234.567,8
     } else if (hasComma) {
       const parts = s.split(",");
       if (parts.length === 2 && parts[1].length !== 3) s = parts.join(".");
@@ -150,58 +167,42 @@
   }
 
   /* ------------------------------------------------------------------ *
-   *  Spaltenerkennung — der Datensatz definiert die exakten Spaltennamen,
-   *  daher werden sie hier tolerant über Schlüsselwörter zugeordnet.
+   *  Spaltenzuordnung — primär über die bekannten Spaltennamen des
+   *  Datensatzes, mit Ausweich-Namen für künftige Umbenennungen.
    * ------------------------------------------------------------------ */
 
-  const FIELD_SPECS = [
-    { key: "year", patterns: [/^jahr\b/, /\bjahr$/, /^year/] },
-    { key: "start", patterns: [/beginn/, /\bstart\b/, /^von$/, /^datum vo/, /^anfang/, /^datum$/] },
-    { key: "end", patterns: [/ende/, /^bis$/, /^datum bis/] },
-    { key: "visitors", patterns: [/besucher/] },
-    { key: "exhibitors", patterns: [/aussteller(?!.*flaeche)/] },
-    { key: "area", patterns: [/flaeche/, /vermietet/, /\bqm\b/, /\bm2\b/] },
-    { key: "city", patterns: [/veranstaltungsort/, /^ort\b/, /\bstadt\b/, /standort/, /^city/] },
-    { key: "country", patterns: [/^land$/, /\bland\b/, /country/, /staat/] },
-    { key: "type", patterns: [/veranstaltungsart/, /veranstaltungstyp/, /^art\b/, /^typ\b/, /kategorie/, /turnus/] },
-    { key: "organizer", patterns: [/veranstalter/, /eigenveranstaltung/, /gastveranstaltung/] },
-    {
-      key: "name",
-      patterns: [
-        /veranstaltungstitel/, /veranstaltungsname/, /titel/, /bezeichnung/,
-        /^veranstaltung(en)?$/, /^name\b/, /\bmesse\b/, /event/,
-      ],
-    },
-  ];
+  const COLUMN_CANDIDATES = {
+    long: ["langtitel"],
+    name: ["kurztitel", "langtitel", "veranstaltungstitel", "titel", "name"],
+    year: ["veranstaltungsjahr", "jahr"],
+    start: ["startdatum", "beginn", "datum von"],
+    end: ["enddatum", "ende", "datum bis"],
+    city: ["stadt", "ort", "veranstaltungsort"],
+    country: ["land"],
+    venue: ["messegelaende", "gelaende"],
+    turnus: ["turnus"],
+    branchen: ["branchenschwerpunkte", "branchen", "branche"],
+    organizer: ["veranstaltername", "veranstalter"],
+    typ: ["messetyp", "veranstaltungsart", "typ"],
+    area: ["nettoflaeche", "vermietete flaeche in qm", "flaeche"],
+    ex: ["aussteller gesamt", "aussteller"],
+    exIn: ["aussteller inland"],
+    exAus: ["aussteller ausland"],
+    vis: ["besucher gesamt", "besucher"],
+    visIn: ["besucher inland"],
+    visAus: ["besucher ausland"],
+  };
 
-  function detectColumns(headers, sampleRows) {
+  function detectColumns(headers) {
+    const norm = new Map(headers.map((h) => [normalizeHeader(h), h]));
     const map = {};
-    const used = new Set(["_id"]);
-    const norm = headers.map(normalizeHeader);
-
-    for (const spec of FIELD_SPECS) {
-      for (const pattern of spec.patterns) {
-        const idx = headers.findIndex(
-          (h, i) => !used.has(h) && pattern.test(norm[i])
-        );
-        if (idx >= 0) {
-          map[spec.key] = headers[idx];
-          used.add(headers[idx]);
+    for (const [key, candidates] of Object.entries(COLUMN_CANDIDATES)) {
+      for (const c of candidates) {
+        if (norm.has(c)) {
+          map[key] = norm.get(c);
           break;
         }
       }
-    }
-
-    // Fallback für den Veranstaltungsnamen: erste übrige Textspalte
-    if (!map.name) {
-      const candidate = headers.find((h) => {
-        if (used.has(h)) return false;
-        const vals = sampleRows.map((r) => r[h]).filter((v) => v != null && v !== "");
-        if (!vals.length) return false;
-        const numeric = vals.filter((v) => parseNumber(v) != null).length;
-        return numeric / vals.length < 0.5;
-      });
-      if (candidate) map.name = candidate;
     }
     return map;
   }
@@ -210,47 +211,74 @@
    *  Datenmodell
    * ------------------------------------------------------------------ */
 
+  function typGroupOf(raw) {
+    const t = String(raw || "").split("*")[0].trim().toLowerCase();
+    if (!t) return "unknown";
+    if (t.startsWith("fach- und privat")) return "mixed";
+    if (t.startsWith("fach")) return "fach";
+    if (t.startsWith("privat")) return "privat";
+    return "unknown";
+  }
+
+  const TYP_LABELS = {
+    fach: "Fachbesucher",
+    mixed: "Fach- & Privatbesucher",
+    privat: "Privatbesucher",
+    unknown: "ohne Angabe",
+  };
+
+  function cleanBranche(b) {
+    return b.replace(/\(Branche\s*\d+\)/gi, "").replace(/\s+/g, " ").trim();
+  }
+
   function buildEvents(rows, cols) {
+    const str = (r, k) => (cols[k] ? String(r[cols[k]] || "").trim() : "");
+    const num = (r, k) => (cols[k] ? parseNumber(r[cols[k]]) : null);
+
     const events = [];
     for (const r of rows) {
       const start = cols.start ? parseDate(r[cols.start]) : null;
-      const end = cols.end ? parseDate(r[cols.end]) : null;
-      let year = cols.year ? parseNumber(r[cols.year]) : null;
+      let year = num(r, "year");
       if (year != null && (year < 1900 || year > 2100)) year = null;
       if (year == null && start) year = start.getFullYear();
-      if (year == null && cols.year && r[cols.year]) {
-        const m = String(r[cols.year]).match(/(19|20)\d{2}/);
-        if (m) year = +m[0];
-      }
 
-      const cityRaw = cols.city ? String(r[cols.city] || "").trim() : "";
-      const countryRaw = cols.country ? String(r[cols.country] || "").trim() : "";
-      const place = [cityRaw, countryRaw].filter(Boolean).join(", ");
-
-      let group = null;
-      const probe = normalizeHeader(cityRaw + " " + countryRaw);
-      if (cityRaw || countryRaw) {
-        group =
-          /muenchen|munich|riem|\bicm\b|\bmoc\b/.test(probe) ||
-          (!cityRaw && /deutschland|germany/.test(probe))
-            ? "munich"
-            : "other";
-      }
+      const city = str(r, "city");
+      const country = str(r, "country");
 
       const ev = {
-        name: cols.name ? String(r[cols.name] || "").trim() : "",
+        name: str(r, "name"),
+        long: str(r, "long"),
         year: year,
         start: start,
-        end: end,
-        place: place,
-        group: group,
-        visitors: cols.visitors ? parseNumber(r[cols.visitors]) : null,
-        exhibitors: cols.exhibitors ? parseNumber(r[cols.exhibitors]) : null,
-        area: cols.area ? parseNumber(r[cols.area]) : null,
-        type: cols.type ? String(r[cols.type] || "").trim() : "",
-        organizer: cols.organizer ? String(r[cols.organizer] || "").trim() : "",
+        end: cols.end ? parseDate(r[cols.end]) : null,
+        city: city,
+        country: country,
+        place: [city, country].filter(Boolean).join(", "),
+        venue: str(r, "venue"),
+        turnus: str(r, "turnus"),
+        organizer: str(r, "organizer"),
+        typRaw: str(r, "typ"),
+        typ: typGroupOf(str(r, "typ")),
+        branchen: str(r, "branchen")
+          .split(";")
+          .map(cleanBranche)
+          .filter(Boolean),
+        area: num(r, "area"),
+        ex: num(r, "ex"),
+        exIn: num(r, "exIn"),
+        exAus: num(r, "exAus"),
+        vis: num(r, "vis"),
+        visIn: num(r, "visIn"),
+        visAus: num(r, "visAus"),
       };
-      if (!ev.name && ev.year == null && ev.visitors == null) continue; // Leerzeile
+      ev.isDE = /deutschland|germany/i.test(country);
+      ev.isMUC = /m(ü|ue)nchen|munich/i.test(city);
+      ev.exShare =
+        ev.ex > 0 && ev.exAus != null ? ev.exAus / ev.ex : null;
+      ev.visShare =
+        ev.vis > 0 && ev.visAus != null ? ev.visAus / ev.vis : null;
+
+      if (!ev.name && ev.year == null && ev.vis == null) continue; // Leerzeile
       events.push(ev);
     }
     return events;
@@ -259,7 +287,8 @@
   /* ------------------------------------------------------------------ *
    *  Laden mit Fallback-Kette:
    *  1) CKAN-Datastore-API (JSON)   2) Original-CSV
-   *  3) lokaler Snapshot im Repo    4) CORS-Proxy auf die Original-CSV
+   *  3) lokaler Snapshot im Repo    4) Datastore per JSONP
+   *  5) CORS-Proxys auf die CSV
    * ------------------------------------------------------------------ */
 
   async function fetchJson(url) {
@@ -421,25 +450,49 @@
     tooltip.hidden = true;
   }
 
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[c]);
+  }
+
+  const fmtDay = new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  });
+
   function eventTooltipHtml(d) {
     const rows = [];
-    if (d.year != null) rows.push(["Jahr", d.year]);
-    if (d.place) rows.push(["Ort", d.place]);
-    if (d.type) rows.push(["Art", d.type]);
-    if (d.visitors != null) rows.push(["Besucher:innen", fmtInt.format(d.visitors)]);
-    if (d.exhibitors != null) rows.push(["Aussteller", fmtInt.format(d.exhibitors)]);
-    if (d.area != null) rows.push(["Fläche", fmtInt.format(d.area) + " m²"]);
+    if (d.start) {
+      rows.push([
+        "Termin",
+        fmtDay.format(d.start) + (d.end ? " – " + fmtDay.format(d.end) : ""),
+      ]);
+    } else if (d.year != null) {
+      rows.push(["Jahr", d.year]);
+    }
+    if (d.place) rows.push(["Ort", escapeHtml(d.place)]);
+    if (d.typRaw) rows.push(["Messetyp", escapeHtml(TYP_LABELS[d.typ])]);
+    if (d.vis != null) {
+      rows.push([
+        "Besucher:innen",
+        fmtInt.format(d.vis) +
+        (d.visShare != null ? " (" + fmtPct(d.visShare) + " Ausland)" : ""),
+      ]);
+    }
+    if (d.ex != null) {
+      rows.push([
+        "Aussteller",
+        fmtInt.format(d.ex) +
+        (d.exShare != null ? " (" + fmtPct(d.exShare) + " Ausland)" : ""),
+      ]);
+    }
+    if (d.area != null) rows.push(["Nettofläche", fmtInt.format(d.area) + " m²"]);
+    if (d.turnus) rows.push(["Turnus", escapeHtml(d.turnus)]);
     return (
       "<h4>" + escapeHtml(d.name || "Veranstaltung") + "</h4><table>" +
       rows.map((r) => "<tr><td>" + r[0] + "</td><td>" + r[1] + "</td></tr>").join("") +
       "</table>"
     );
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-    })[c]);
   }
 
   function bindTooltip(selection, htmlOf) {
@@ -458,26 +511,14 @@
    *  Gemeinsame Chart-Helfer
    * ------------------------------------------------------------------ */
 
-  function groupColor(g) {
-    if (g === "munich") return COLORS.munich;
-    if (g === "other") return COLORS.other;
-    return COLORS.single;
-  }
-
-  function groupLabel(g) {
-    if (g === "munich") return "München";
-    if (g === "other") return "Andere Standorte";
-    return "Alle Veranstaltungen";
-  }
-
-  function renderLegend(containerId, groups) {
+  function renderLegend(containerId, items) {
     const el = document.getElementById(containerId);
     if (!el) return;
-    el.innerHTML = groups
+    el.innerHTML = items
       .map(
-        (g) =>
+        (it) =>
           '<span class="legend-item"><span class="legend-swatch" style="background:' +
-          groupColor(g) + '"></span>' + groupLabel(g) + "</span>"
+          it.color + '"></span>' + escapeHtml(it.label) + "</span>"
       )
       .join("");
   }
@@ -498,8 +539,30 @@
       .attr("preserveAspectRatio", "xMidYMid meet");
   }
 
+  function truncate(s, n) {
+    s = String(s);
+    return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
+  }
+
+  function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function appendFact(id, sentence) {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.factDone) return;
+    el.dataset.factDone = "1";
+    const strong = document.createElement("strong");
+    strong.className = "narrative-fact";
+    strong.textContent = " " + sentence;
+    el.appendChild(strong);
+  }
+
+  const CURRENT_YEAR = new Date().getFullYear();
+
   /* ------------------------------------------------------------------ *
-   *  Kapitel 1 — Veranstaltungen pro Jahr (gestapelte Balken)
+   *  Kapitel 1 — Veranstaltungen pro Jahr (Deutschland vs. Ausland)
    * ------------------------------------------------------------------ */
 
   function renderYears(events) {
@@ -507,35 +570,49 @@
     const withYear = events.filter((d) => d.year != null);
     if (!withYear.length) { container.textContent = "Keine Jahresangaben im Datensatz."; return; }
 
-    const hasGroups = withYear.some((d) => d.group != null);
-    const groups = hasGroups ? ["munich", "other"] : ["all"];
+    const groups = ["de", "abroad"];
     const years = d3.sort(Array.from(new Set(withYear.map((d) => d.year))));
-
-    const counts = years.map((y) => {
-      const row = { year: y };
-      for (const g of groups) {
-        row[g] = withYear.filter(
-          (d) => d.year === y && (hasGroups ? (d.group || "other") === g : true)
-        ).length;
-      }
-      return row;
-    });
+    const counts = years.map((y) => ({
+      year: y,
+      de: withYear.filter((d) => d.year === y && d.isDE).length,
+      abroad: withYear.filter((d) => d.year === y && !d.isDE).length,
+    }));
 
     const isMobile = container.clientWidth < 560;
     const { w, h } = chartSize(container, 0.52, 300, 430);
-    const margin = { top: 24, right: 12, bottom: 34, left: 40 };
+    const margin = { top: 34, right: 12, bottom: 36, left: 40 };
     const svg = svgIn(container, w, h);
 
     const x = d3.scaleBand().domain(years).range([margin.left, w - margin.right]).padding(0.25);
-    const maxTotal = d3.max(counts, (r) => d3.sum(groups, (g) => r[g])) || 1;
+    const maxTotal = d3.max(counts, (r) => r.de + r.abroad) || 1;
     const y = d3.scaleLinear().domain([0, maxTotal]).nice().range([h - margin.bottom, margin.top]);
+
+    // Corona-Band hinter 2020/21
+    const covidYears = years.filter((yy) => yy === 2020 || yy === 2021);
+    if (covidYears.length) {
+      const x0 = x(covidYears[0]) - x.step() * x.padding() * 0.5;
+      const x1 = x(covidYears[covidYears.length - 1]) + x.bandwidth() + x.step() * x.padding() * 0.5;
+      svg.append("rect")
+        .attr("class", "annotation-band")
+        .attr("x", x0).attr("width", x1 - x0)
+        .attr("y", margin.top - 18).attr("height", h - margin.top - margin.bottom + 18);
+      svg.append("text")
+        .attr("class", "annotation-label")
+        .attr("x", (x0 + x1) / 2)
+        .attr("y", margin.top - 4)
+        .attr("text-anchor", "middle")
+        .text("Corona");
+    }
 
     svg.append("g")
       .attr("class", "axis")
       .attr("transform", "translate(0," + (h - margin.bottom) + ")")
-      .call(d3.axisBottom(x).tickValues(
-        isMobile ? years.filter((d, i) => i % 2 === 0) : years
-      ).tickSizeOuter(0));
+      .call(
+        d3.axisBottom(x)
+          .tickValues(isMobile ? years.filter((d, i) => i % 2 === 0) : years)
+          .tickFormat((yy) => (yy === CURRENT_YEAR ? yy + "*" : yy))
+          .tickSizeOuter(0)
+      );
 
     svg.append("g")
       .attr("class", "axis")
@@ -550,7 +627,7 @@
       .selectAll("g")
       .data(stack)
       .join("g")
-      .attr("fill", (s) => (hasGroups ? groupColor(s.key) : COLORS.bar))
+      .attr("fill", (s) => (s.key === "de" ? COLORS.de : COLORS.abroad))
       .selectAll("rect")
       .data((s) => s.map((seg) => Object.assign(seg, { key: s.key })))
       .join("rect")
@@ -559,51 +636,167 @@
       .attr("y", (seg) => y(seg[1]))
       .attr("height", (seg) => Math.max(0, y(seg[0]) - y(seg[1])))
       .attr("rx", 3)
+      .attr("fill-opacity", (seg) => (seg.data.year === CURRENT_YEAR ? 0.45 : 1))
       .call(bindTooltip, (seg) => {
-        const total = d3.sum(groups, (g) => seg.data[g]);
         return (
-          "<h4>" + seg.data.year + "</h4><table>" +
-          (hasGroups
-            ? "<tr><td>" + groupLabel(seg.key) + "</td><td>" + (seg[1] - seg[0]) + "</td></tr>"
-            : "") +
-          "<tr><td>Gesamt</td><td>" + total + " Veranstaltungen</td></tr></table>"
+          "<h4>" + seg.data.year + (seg.data.year === CURRENT_YEAR ? " (laufend)" : "") +
+          "</h4><table>" +
+          "<tr><td>Deutschland</td><td>" + seg.data.de + "</td></tr>" +
+          "<tr><td>Ausland</td><td>" + seg.data.abroad + "</td></tr>" +
+          "<tr><td>Gesamt</td><td>" + (seg.data.de + seg.data.abroad) + " Veranstaltungen</td></tr></table>"
         );
       });
 
-    // Summen über den Balken
     svg.append("g")
       .selectAll("text")
       .data(counts)
       .join("text")
       .attr("x", (r) => x(r.year) + x.bandwidth() / 2)
-      .attr("y", (r) => y(d3.sum(groups, (g) => r[g])) - 6)
+      .attr("y", (r) => y(r.de + r.abroad) - 6)
       .attr("text-anchor", "middle")
       .attr("font-size", 11)
       .attr("font-weight", 700)
       .attr("fill", "#4a5568")
-      .text((r) => d3.sum(groups, (g) => r[g]));
+      .text((r) => r.de + r.abroad);
 
-    if (hasGroups) renderLegend("legendYears", groups);
+    renderLegend("legendYears", [
+      { color: COLORS.de, label: "Deutschland" },
+      { color: COLORS.abroad, label: "Ausland" },
+    ]);
 
-    // Erzählerischer Zusatz
-    const totals = counts.map((r) => ({ year: r.year, n: d3.sum(groups, (g) => r[g]) }));
-    const best = totals.reduce((a, b) => (b.n > a.n ? b : a));
-    const worst = totals.reduce((a, b) => (b.n < a.n ? b : a));
-    appendFact(
-      "narrativeYears",
-      "Das stärkste Jahr im Datensatz ist " + best.year + " mit " + best.n +
-      " Veranstaltungen, das schwächste " + worst.year + " mit " + worst.n + "."
-    );
-    setText("subYears", years[0] + "–" + years[years.length - 1] + (hasGroups ? " · nach Standort" : ""));
+    if (years.includes(CURRENT_YEAR)) {
+      setText(
+        "noteYears",
+        "* " + CURRENT_YEAR + " ist das laufende Jahr – der Kalender ist noch nicht vollständig."
+      );
+    }
+
+    const y2019 = counts.find((r) => r.year === 2019);
+    const y2021 = counts.find((r) => r.year === 2021);
+    const best = counts
+      .filter((r) => r.year !== CURRENT_YEAR)
+      .reduce((a, b) => (b.de + b.abroad > a.de + a.abroad ? b : a));
+    if (y2019 && y2021) {
+      appendFact(
+        "narrativeYears",
+        "In der Pandemie sank die Zahl der Veranstaltungen von " +
+        (y2019.de + y2019.abroad) + " (2019) auf " + (y2021.de + y2021.abroad) +
+        " (2021) – das bisher dichteste Jahr ist " + best.year + " mit " +
+        (best.de + best.abroad) + " Messen."
+      );
+    }
+    setText("subYears", years[0] + "–" + years[years.length - 1] + " · nach Standort");
   }
 
   /* ------------------------------------------------------------------ *
-   *  Kapitel 2 — Timeline-Bubbles
+   *  Kapitel 2 — Veranstaltungen nach Stadt
+   * ------------------------------------------------------------------ */
+
+  function renderCities(events) {
+    const container = document.getElementById("chartCities");
+    const withCity = events.filter((d) => d.city);
+    if (!withCity.length) { container.textContent = "Keine Ortsangaben im Datensatz."; return; }
+
+    const byCity = d3.rollups(withCity, (v) => v, (d) => d.city + "|" + d.country)
+      .map(([key, v]) => ({
+        city: v[0].city,
+        country: v[0].country,
+        n: v.length,
+        isDE: v[0].isDE,
+        isMUC: v[0].isMUC,
+      }))
+      .sort((a, b) => b.n - a.n);
+
+    const TOP = 12;
+    const top = byCity.slice(0, TOP);
+    const rest = byCity.slice(TOP);
+    if (rest.length) {
+      top.push({
+        city: rest.length + " weitere Städte",
+        country: rest.map((r) => r.country).filter((c, i, a) => a.indexOf(c) === i).length + " Länder",
+        n: d3.sum(rest, (r) => r.n),
+        isDE: false,
+        isMUC: false,
+        isRest: true,
+      });
+    }
+
+    const isMobile = container.clientWidth < 560;
+    const w = container.clientWidth || 600;
+    const rowH = isMobile ? 46 : 38;
+    const margin = { top: 4, right: 46, bottom: 4, left: 8 };
+    const h = top.length * rowH + margin.top + margin.bottom;
+    const svg = svgIn(container, w, h);
+
+    const x = d3.scaleLinear()
+      .domain([0, d3.max(top, (d) => d.n)])
+      .range([0, w - margin.left - margin.right]);
+
+    const colorOf = (d) =>
+      d.isRest ? COLORS.unknown : d.isMUC ? COLORS.munich : d.isDE ? COLORS.deOther : COLORS.abroad;
+
+    const row = svg.append("g")
+      .selectAll("g")
+      .data(top)
+      .join("g")
+      .attr("transform", (d, i) => "translate(" + margin.left + "," + (margin.top + i * rowH) + ")");
+
+    const barH = isMobile ? 15 : 18;
+    const barY = isMobile ? 22 : 14;
+
+    row.append("rect")
+      .attr("y", barY)
+      .attr("height", barH)
+      .attr("width", (d) => Math.max(2, x(d.n)))
+      .attr("rx", barH / 2)
+      .attr("fill", colorOf)
+      .attr("fill-opacity", 0.9)
+      .call(bindTooltip, (d) =>
+        "<h4>" + escapeHtml(d.city) + "</h4><table>" +
+        "<tr><td>Land</td><td>" + escapeHtml(d.country) + "</td></tr>" +
+        "<tr><td>Veranstaltungen</td><td>" + d.n + "</td></tr></table>"
+      );
+
+    row.append("text")
+      .attr("x", 2)
+      .attr("y", isMobile ? 15 : barY - 4)
+      .attr("font-size", isMobile ? 11.5 : 12.5)
+      .attr("font-weight", 600)
+      .attr("fill", "#14213d")
+      .text((d) => truncate(d.city, isMobile ? 30 : 44) + "  ·  " + truncate(d.country, 22));
+
+    row.append("text")
+      .attr("x", (d) => Math.max(2, x(d.n)) + 8)
+      .attr("y", barY + barH / 2 + 4)
+      .attr("font-size", 11.5)
+      .attr("font-weight", 700)
+      .attr("fill", "#4a5568")
+      .text((d) => d.n);
+
+    renderLegend("legendCities", [
+      { color: COLORS.munich, label: "München" },
+      { color: COLORS.deOther, label: "Deutschland (sonstige)" },
+      { color: COLORS.abroad, label: "Ausland" },
+    ]);
+
+    const muc = withCity.filter((d) => d.isMUC).length;
+    const countries = new Set(withCity.map((d) => d.country)).size;
+    appendFact(
+      "narrativeCities",
+      "Nur " + muc + " von " + withCity.length + " Veranstaltungen (" +
+      fmtPct(muc / withCity.length) + ") fanden in München statt – der Rest verteilt sich auf " +
+      (byCity.length - 1) + " weitere Städte in " + countries + " Ländern."
+    );
+    setText("subCities", "Top " + TOP + " von " + byCity.length + " Städten · 2018–" + d3.max(events, (d) => d.year));
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Kapitel 3 — Timeline-Bubbles (Besucherzahlen, ab 2022)
    * ------------------------------------------------------------------ */
 
   function renderTimeline(events) {
     const container = document.getElementById("chartTimeline");
-    let data = events.filter((d) => d.visitors != null && d.visitors > 0);
+    let data = events.filter((d) => d.vis != null && d.vis > 0);
     const useDates = data.filter((d) => d.start).length > data.length * 0.5;
     data = data.filter((d) => (useDates ? d.start : d.year != null));
     if (!data.length) { container.textContent = "Keine Besucherzahlen im Datensatz."; return; }
@@ -622,34 +815,13 @@
           .range([margin.left, w - margin.right]);
 
     const y = d3.scaleSqrt()
-      .domain([0, d3.max(data, (d) => d.visitors)]).nice()
+      .domain([0, d3.max(data, (d) => d.vis)]).nice()
       .range([h - margin.bottom, margin.top]);
 
     const hasArea = data.some((d) => d.area != null && d.area > 0);
     const r = hasArea
       ? d3.scaleSqrt().domain([0, d3.max(data, (d) => d.area || 0)]).range([3, isMobile ? 16 : 24])
       : () => (isMobile ? 5 : 6);
-
-    // Pandemie-Band
-    if (useDates) {
-      const bandStart = new Date(2020, 2, 11);
-      const bandEnd = new Date(2022, 3, 3);
-      const [d0, d1] = x.domain();
-      if (bandStart < d1 && bandEnd > d0) {
-        const x0 = x(d3.max([bandStart, d0]));
-        const x1 = x(d3.min([bandEnd, d1]));
-        svg.append("rect")
-          .attr("class", "annotation-band")
-          .attr("x", x0).attr("width", Math.max(0, x1 - x0))
-          .attr("y", margin.top).attr("height", h - margin.top - margin.bottom);
-        svg.append("text")
-          .attr("class", "annotation-label")
-          .attr("x", (x0 + x1) / 2)
-          .attr("y", margin.top + 14)
-          .attr("text-anchor", "middle")
-          .text("Corona-Pandemie");
-      }
-    }
 
     svg.append("g")
       .attr("class", "axis")
@@ -677,43 +849,43 @@
       .selectAll("circle")
       .data(data)
       .join("circle")
-      .attr("cx", (d) =>
-        useDates ? x(d.start) : x(d.year) + (jitter() - 0.5) * 18
-      )
-      .attr("cy", (d) => y(d.visitors))
+      .attr("cx", (d) => (useDates ? x(d.start) : x(d.year) + (jitter() - 0.5) * 18))
+      .attr("cy", (d) => y(d.vis))
       .attr("r", (d) => (hasArea ? r(d.area || 0) : r()))
-      .attr("fill", (d) => groupColor(d.group))
+      .attr("fill", (d) => (d.isDE ? COLORS.de : COLORS.abroad))
       .attr("fill-opacity", 0.55)
-      .attr("stroke", (d) => groupColor(d.group))
+      .attr("stroke", (d) => (d.isDE ? COLORS.de : COLORS.abroad))
       .attr("stroke-width", 1)
       .call(bindTooltip, eventTooltipHtml);
 
-    const groups = Array.from(new Set(data.map((d) => d.group).filter((g) => g != null)));
-    if (groups.length > 1) renderLegend("legendTimeline", ["munich", "other"]);
+    renderLegend("legendTimeline", [
+      { color: COLORS.de, label: "Deutschland" },
+      { color: COLORS.abroad, label: "Ausland" },
+    ]);
 
-    const top = data.reduce((a, b) => (b.visitors > a.visitors ? b : a));
+    const top = data.reduce((a, b) => (b.vis > a.vis ? b : a));
     appendFact(
       "narrativeTimeline",
-      "Die besucherstärkste Einzelveranstaltung: " + top.name +
+      "Die besucherstärkste Veranstaltung: " + top.name +
       (top.year != null ? " (" + top.year + ")" : "") +
-      " mit " + fmtInt.format(top.visitors) + " Besucher:innen."
+      " mit " + fmtInt.format(top.vis) + " Besucher:innen."
     );
     setText(
       "subTimeline",
       fmtInt.format(data.length) + " Veranstaltungen mit Besucherangabe" +
-      (hasArea ? " · Kreisgröße = vermietete Fläche" : "")
+      (hasArea ? " · Kreisgröße = Nettofläche" : "")
     );
   }
 
   /* ------------------------------------------------------------------ *
-   *  Kapitel 3 — Top-Veranstaltungen (horizontale Balken)
+   *  Kapitel 4 — Top-Veranstaltungen (horizontale Balken)
    * ------------------------------------------------------------------ */
 
   function renderTop(events) {
     const container = document.getElementById("chartTop");
     const data = events
-      .filter((d) => d.visitors != null && d.visitors > 0 && d.name)
-      .sort((a, b) => b.visitors - a.visitors)
+      .filter((d) => d.vis != null && d.vis > 0 && d.name)
+      .sort((a, b) => b.vis - a.vis)
       .slice(0, 12);
     if (!data.length) { container.textContent = "Keine Besucherzahlen im Datensatz."; return; }
 
@@ -725,7 +897,7 @@
     const svg = svgIn(container, w, h);
 
     const x = d3.scaleLinear()
-      .domain([0, d3.max(data, (d) => d.visitors)])
+      .domain([0, d3.max(data, (d) => d.vis)])
       .range([0, w - margin.left - margin.right]);
 
     const row = svg.append("g")
@@ -740,9 +912,9 @@
     row.append("rect")
       .attr("y", barY)
       .attr("height", barH)
-      .attr("width", (d) => Math.max(2, x(d.visitors)))
+      .attr("width", (d) => Math.max(2, x(d.vis)))
       .attr("rx", barH / 2)
-      .attr("fill", (d) => groupColor(d.group))
+      .attr("fill", (d) => (d.isDE ? COLORS.de : COLORS.abroad))
       .attr("fill-opacity", 0.85)
       .call(bindTooltip, eventTooltipHtml);
 
@@ -753,41 +925,143 @@
       .attr("font-weight", 600)
       .attr("fill", "#14213d")
       .text((d) =>
-        truncate(d.name, isMobile ? 34 : 56) +
-        (d.year != null ? "  ·  " + d.year : "")
+        truncate(d.name, isMobile ? 26 : 40) +
+        (d.year != null ? "  ·  " + d.year : "") +
+        (d.city ? "  ·  " + truncate(d.city, 16) : "")
       );
 
     row.append("text")
-      .attr("x", (d) => Math.max(2, x(d.visitors)) + 8)
+      .attr("x", (d) => Math.max(2, x(d.vis)) + 8)
       .attr("y", barY + barH / 2 + 4)
       .attr("font-size", 11.5)
       .attr("font-weight", 700)
       .attr("fill", "#4a5568")
-      .text((d) => fmtCompact(d.visitors));
+      .text((d) => fmtCompact(d.vis));
 
-    const total = d3.sum(events, (d) => d.visitors || 0);
-    const topShare = total ? d3.sum(data, (d) => d.visitors) / total : 0;
+    const total = d3.sum(events, (d) => d.vis || 0);
+    const topShare = total ? d3.sum(data, (d) => d.vis) / total : 0;
     appendFact(
       "narrativeTop",
       "Die " + data.length + " größten Veranstaltungen vereinen " +
-      fmt1.format(topShare * 100) + " % aller dokumentierten Besuche auf sich."
+      fmtPct(topShare) + " aller dokumentierten Besuche auf sich."
     );
-    setText("subTop", "Top " + data.length + " nach Besucher:innen");
-  }
-
-  function truncate(s, n) {
-    s = String(s);
-    return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
+    setText("subTop", "Top " + data.length + " nach Besucher:innen · ab 2022");
   }
 
   /* ------------------------------------------------------------------ *
-   *  Kapitel 4 — Aussteller vs. Besucher (log-log)
+   *  Kapitel 5 — Auslandsanteile (Hanteldiagramm)
+   * ------------------------------------------------------------------ */
+
+  function renderIntl(events) {
+    const container = document.getElementById("chartIntl");
+    const data = events
+      .filter((d) => d.isDE && d.exShare != null && d.visShare != null && d.vis > 0)
+      .sort((a, b) => b.vis - a.vis)
+      .slice(0, 10);
+    if (data.length < 3) {
+      container.textContent = "Zu wenige Veranstaltungen mit In-/Auslandsangaben.";
+      return;
+    }
+
+    const isMobile = container.clientWidth < 560;
+    const w = container.clientWidth || 600;
+    const rowH = isMobile ? 56 : 46;
+    const margin = { top: 26, right: 18, bottom: 8, left: 18 };
+    const h = data.length * rowH + margin.top + margin.bottom;
+    const svg = svgIn(container, w, h);
+
+    const x = d3.scaleLinear().domain([0, 1]).range([margin.left, w - margin.right]);
+
+    // Prozent-Hilfslinien
+    const gridTicks = [0, 0.25, 0.5, 0.75, 1];
+    svg.append("g")
+      .selectAll("line")
+      .data(gridTicks)
+      .join("line")
+      .attr("class", "grid-line")
+      .attr("x1", (t) => x(t)).attr("x2", (t) => x(t))
+      .attr("y1", margin.top - 6).attr("y2", h - margin.bottom);
+    svg.append("g")
+      .selectAll("text")
+      .data(gridTicks)
+      .join("text")
+      .attr("x", (t) => x(t))
+      .attr("y", margin.top - 12)
+      .attr("text-anchor", "middle")
+      .attr("font-size", 10.5)
+      .attr("fill", "#8a93a6")
+      .text((t) => Math.round(t * 100) + " %");
+
+    const row = svg.append("g")
+      .selectAll("g")
+      .data(data)
+      .join("g")
+      .attr("transform", (d, i) => "translate(0," + (margin.top + i * rowH) + ")");
+
+    const dotY = isMobile ? 34 : 28;
+    const dotR = isMobile ? 6 : 7;
+
+    row.append("text")
+      .attr("x", margin.left)
+      .attr("y", isMobile ? 16 : 12)
+      .attr("font-size", isMobile ? 12 : 12.5)
+      .attr("font-weight", 600)
+      .attr("fill", "#14213d")
+      .text((d) => truncate(d.name, isMobile ? 30 : 48) + "  ·  " + d.year);
+
+    row.append("line")
+      .attr("x1", (d) => x(Math.min(d.exShare, d.visShare)))
+      .attr("x2", (d) => x(Math.max(d.exShare, d.visShare)))
+      .attr("y1", dotY).attr("y2", dotY)
+      .attr("stroke", "#cdd5e0")
+      .attr("stroke-width", 3)
+      .attr("stroke-linecap", "round");
+
+    row.append("circle")
+      .attr("cx", (d) => x(d.exShare))
+      .attr("cy", dotY).attr("r", dotR)
+      .attr("fill", COLORS.exhibitors)
+      .call(bindTooltip, (d) =>
+        "<h4>" + escapeHtml(d.name) + " " + d.year + "</h4><table>" +
+        "<tr><td>Aussteller aus dem Ausland</td><td>" + fmtPct(d.exShare) + "</td></tr>" +
+        "<tr><td>Besucher:innen aus dem Ausland</td><td>" + fmtPct(d.visShare) + "</td></tr></table>"
+      );
+
+    row.append("circle")
+      .attr("cx", (d) => x(d.visShare))
+      .attr("cy", dotY).attr("r", dotR)
+      .attr("fill", COLORS.visitors)
+      .call(bindTooltip, (d) =>
+        "<h4>" + escapeHtml(d.name) + " " + d.year + "</h4><table>" +
+        "<tr><td>Aussteller aus dem Ausland</td><td>" + fmtPct(d.exShare) + "</td></tr>" +
+        "<tr><td>Besucher:innen aus dem Ausland</td><td>" + fmtPct(d.visShare) + "</td></tr></table>"
+      );
+
+    renderLegend("legendIntl", [
+      { color: COLORS.exhibitors, label: "Anteil Aussteller aus dem Ausland" },
+      { color: COLORS.visitors, label: "Anteil Besucher:innen aus dem Ausland" },
+    ]);
+
+    const all = events.filter((d) => d.isDE && d.exShare != null && d.visShare != null);
+    const meanEx = d3.mean(all, (d) => d.exShare);
+    const meanVis = d3.mean(all, (d) => d.visShare);
+    appendFact(
+      "narrativeIntl",
+      "Über alle deutschen Veranstaltungen mit Angaben kommen im Schnitt " +
+      fmtPct(meanEx) + " der Aussteller, aber nur " + fmtPct(meanVis) +
+      " der Besucher:innen aus dem Ausland."
+    );
+    setText("subIntl", "Die " + data.length + " besucherstärksten Veranstaltungen in Deutschland");
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Kapitel 6 — Aussteller vs. Besucher nach Messetyp (log-log)
    * ------------------------------------------------------------------ */
 
   function renderScatter(events) {
     const container = document.getElementById("chartScatter");
     const data = events.filter(
-      (d) => d.visitors != null && d.visitors > 0 && d.exhibitors != null && d.exhibitors > 0
+      (d) => d.vis != null && d.vis > 0 && d.ex != null && d.ex > 0
     );
     if (data.length < 3) {
       container.textContent = "Zu wenige Datensätze mit Aussteller- und Besucherzahlen.";
@@ -799,14 +1073,13 @@
     const margin = { top: 16, right: 18, bottom: 44, left: isMobile ? 44 : 56 };
     const svg = svgIn(container, w, h);
 
+    function padLog(ext) { return [ext[0] / 1.4, ext[1] * 1.4]; }
     const x = d3.scaleLog()
-      .domain(padLog(d3.extent(data, (d) => d.exhibitors)))
+      .domain(padLog(d3.extent(data, (d) => d.ex)))
       .range([margin.left, w - margin.right]);
     const y = d3.scaleLog()
-      .domain(padLog(d3.extent(data, (d) => d.visitors)))
+      .domain(padLog(d3.extent(data, (d) => d.vis)))
       .range([h - margin.bottom, margin.top]);
-
-    function padLog(ext) { return [ext[0] / 1.4, ext[1] * 1.4]; }
 
     const fmtTick = (v) => (v >= 1e6 ? v / 1e6 + " Mio." : v >= 1e3 ? v / 1e3 + "k" : v);
 
@@ -822,7 +1095,6 @@
       .call((g) => g.selectAll(".tick line").attr("class", "grid-line"))
       .call((g) => g.select(".domain").remove());
 
-    // Achsentitel
     svg.append("text")
       .attr("x", (margin.left + w - margin.right) / 2)
       .attr("y", h - 8)
@@ -839,13 +1111,11 @@
 
     // Orientierungslinien: Besucher je Aussteller
     for (const ratio of [10, 100]) {
-      const pts = [];
-      for (const ex of [x.domain()[0], x.domain()[1]]) {
-        pts.push([ex, ex * ratio]);
-      }
+      const pts = [x.domain()[0], x.domain()[1]].map((ex) => [ex, ex * ratio]);
       const clipped = pts.map(([ex, vis]) => [
         x(ex),
-        Math.max(margin.top, Math.min(h - margin.bottom, y(Math.max(y.domain()[0], Math.min(y.domain()[1], vis))))),
+        Math.max(margin.top, Math.min(h - margin.bottom,
+          y(Math.max(y.domain()[0], Math.min(y.domain()[1], vis))))),
       ]);
       svg.append("line")
         .attr("x1", clipped[0][0]).attr("y1", clipped[0][1])
@@ -863,70 +1133,166 @@
       .selectAll("circle")
       .data(data)
       .join("circle")
-      .attr("cx", (d) => x(d.exhibitors))
-      .attr("cy", (d) => y(d.visitors))
+      .attr("cx", (d) => x(d.ex))
+      .attr("cy", (d) => y(d.vis))
       .attr("r", isMobile ? 5 : 6)
-      .attr("fill", (d) => groupColor(d.group))
-      .attr("fill-opacity", 0.55)
-      .attr("stroke", (d) => groupColor(d.group))
+      .attr("fill", (d) => COLORS[d.typ])
+      .attr("fill-opacity", 0.6)
+      .attr("stroke", (d) => COLORS[d.typ])
       .call(bindTooltip, eventTooltipHtml);
 
-    const groups = Array.from(new Set(data.map((d) => d.group).filter((g) => g != null)));
-    if (groups.length > 1) renderLegend("legendScatter", ["munich", "other"]);
-
-    // Pearson-Korrelation auf log-Werten
-    const lx = data.map((d) => Math.log10(d.exhibitors));
-    const ly = data.map((d) => Math.log10(d.visitors));
-    const mx = d3.mean(lx), my = d3.mean(ly);
-    const num = d3.sum(lx.map((v, i) => (v - mx) * (ly[i] - my)));
-    const den = Math.sqrt(d3.sum(lx.map((v) => (v - mx) ** 2)) * d3.sum(ly.map((v) => (v - my) ** 2)));
-    const rPearson = den ? num / den : 0;
-    appendFact(
-      "narrativeScatter",
-      "Der Zusammenhang ist deutlich: Die Korrelation (log-skaliert) beträgt r = " +
-      fmt1.format(rPearson).replace(".", ",") + "."
+    const typsPresent = ["fach", "mixed", "privat", "unknown"].filter((t) =>
+      data.some((d) => d.typ === t)
     );
-    setText("subScatter", fmtInt.format(data.length) + " Veranstaltungen mit beiden Angaben");
+    renderLegend(
+      "legendScatter",
+      typsPresent.map((t) => ({ color: COLORS[t], label: TYP_LABELS[t] }))
+    );
+
+    const medianRatio = (t) => {
+      const arr = data.filter((d) => d.typ === t).map((d) => d.vis / d.ex);
+      return arr.length ? d3.median(arr) : null;
+    };
+    const mFach = medianRatio("fach");
+    const mPriv = medianRatio("privat") || medianRatio("mixed");
+    if (mFach && mPriv) {
+      appendFact(
+        "narrativeScatter",
+        "Auf reinen Fachmessen kommen im Median rund " + fmtInt.format(Math.round(mFach)) +
+        " Besucher:innen auf einen Aussteller – auf Messen mit Privatpublikum etwa " +
+        fmtInt.format(Math.round(mPriv)) + "."
+      );
+    }
+    setText("subScatter", fmtInt.format(data.length) + " Veranstaltungen mit beiden Angaben · ab 2022");
   }
 
   /* ------------------------------------------------------------------ *
-   *  Kapitel 5 — Tabelle
+   *  Kapitel 7 — Branchenschwerpunkte
+   * ------------------------------------------------------------------ */
+
+  function renderBranchen(events) {
+    const container = document.getElementById("chartBranchen");
+    const counts = new Map();
+    let assignments = 0;
+    for (const ev of events) {
+      for (const b of ev.branchen) {
+        counts.set(b, (counts.get(b) || 0) + 1);
+        assignments++;
+      }
+    }
+    if (!counts.size) { container.textContent = "Keine Branchenangaben im Datensatz."; return; }
+
+    const top = Array.from(counts, ([branche, n]) => ({ branche, n }))
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 10);
+
+    const isMobile = container.clientWidth < 560;
+    const w = container.clientWidth || 600;
+    const rowH = isMobile ? 50 : 40;
+    const margin = { top: 4, right: 44, bottom: 4, left: 8 };
+    const h = top.length * rowH + margin.top + margin.bottom;
+    const svg = svgIn(container, w, h);
+
+    const x = d3.scaleLinear()
+      .domain([0, d3.max(top, (d) => d.n)])
+      .range([0, w - margin.left - margin.right]);
+
+    const shade = d3.scaleLinear()
+      .domain([0, top.length - 1])
+      .range([1, 0.45]);
+
+    const row = svg.append("g")
+      .selectAll("g")
+      .data(top)
+      .join("g")
+      .attr("transform", (d, i) => "translate(" + margin.left + "," + (margin.top + i * rowH) + ")");
+
+    const barH = isMobile ? 15 : 18;
+    const barY = isMobile ? 26 : 16;
+
+    row.append("rect")
+      .attr("y", barY)
+      .attr("height", barH)
+      .attr("width", (d) => Math.max(2, x(d.n)))
+      .attr("rx", barH / 2)
+      .attr("fill", COLORS.bar)
+      .attr("fill-opacity", (d, i) => shade(i))
+      .call(bindTooltip, (d) =>
+        "<h4>" + escapeHtml(d.branche) + "</h4><table>" +
+        "<tr><td>Veranstaltungen</td><td>" + d.n + "</td></tr></table>"
+      );
+
+    row.append("text")
+      .attr("x", 2)
+      .attr("y", isMobile ? 17 : barY - 4)
+      .attr("font-size", isMobile ? 11.5 : 12.5)
+      .attr("font-weight", 600)
+      .attr("fill", "#14213d")
+      .text((d) => truncate(d.branche, isMobile ? 42 : 70));
+
+    row.append("text")
+      .attr("x", (d) => Math.max(2, x(d.n)) + 8)
+      .attr("y", barY + barH / 2 + 4)
+      .attr("font-size", 11.5)
+      .attr("font-weight", 700)
+      .attr("fill", "#4a5568")
+      .text((d) => d.n);
+
+    appendFact(
+      "narrativeBranchen",
+      "An der Spitze: „" + top[0].branche + "“ mit " + top[0].n +
+      " Veranstaltungen – geprägt von der bauma-Familie auf drei Kontinenten."
+    );
+    setText(
+      "subBranchen",
+      "Top 10 von " + counts.size + " Branchen · " + fmtInt.format(assignments) + " Zuordnungen"
+    );
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Kapitel 8 — Tabelle
    * ------------------------------------------------------------------ */
 
   function renderTable(events) {
     const columns = [
       { key: "name", label: "Veranstaltung", num: false },
       { key: "year", label: "Jahr", num: true },
-      { key: "place", label: "Ort", num: false },
-      { key: "type", label: "Art", num: false },
-      { key: "visitors", label: "Besucher:innen", num: true },
-      { key: "exhibitors", label: "Aussteller", num: true },
+      { key: "city", label: "Stadt", num: false },
+      { key: "country", label: "Land", num: false },
+      { key: "typLabel", label: "Messetyp", num: false },
+      { key: "vis", label: "Besucher:innen", num: true },
+      { key: "ex", label: "Aussteller", num: true },
       { key: "area", label: "Fläche (m²)", num: true },
-    ].filter((c) => events.some((d) => d[c.key] != null && d[c.key] !== ""));
+    ];
+    const rows = events.map((d) =>
+      Object.assign({ typLabel: d.typRaw ? TYP_LABELS[d.typ] : "" }, d)
+    );
+    const visible = columns.filter((c) => rows.some((d) => d[c.key] != null && d[c.key] !== ""));
 
     const thead = document.querySelector("#dataTable thead");
     const tbody = document.querySelector("#dataTable tbody");
     const search = document.getElementById("tableSearch");
     const countEl = document.getElementById("tableCount");
 
-    let sortKey = "visitors";
+    let sortKey = "vis";
     let sortDir = -1;
-    if (!columns.some((c) => c.key === "visitors")) {
-      sortKey = columns[0].key;
+    if (!visible.some((c) => c.key === "vis")) {
+      sortKey = visible[0].key;
       sortDir = 1;
     }
 
     function draw() {
       const q = (search.value || "").toLowerCase();
-      let rows = events.filter(
+      let shown = rows.filter(
         (d) =>
           !q ||
           (d.name && d.name.toLowerCase().includes(q)) ||
-          (d.place && d.place.toLowerCase().includes(q)) ||
-          (d.type && d.type.toLowerCase().includes(q)) ||
+          (d.long && d.long.toLowerCase().includes(q)) ||
+          (d.city && d.city.toLowerCase().includes(q)) ||
+          (d.country && d.country.toLowerCase().includes(q)) ||
           (d.year != null && String(d.year).includes(q))
       );
-      rows = rows.slice().sort((a, b) => {
+      shown = shown.slice().sort((a, b) => {
         const va = a[sortKey], vb = b[sortKey];
         if (va == null || va === "") return 1;
         if (vb == null || vb === "") return -1;
@@ -936,7 +1302,7 @@
 
       thead.innerHTML =
         "<tr>" +
-        columns.map((c) =>
+        visible.map((c) =>
           "<th data-key=\"" + c.key + "\">" + c.label +
           (c.key === sortKey
             ? '<span class="sort-ind">' + (sortDir > 0 ? "▲" : "▼") + "</span>"
@@ -945,9 +1311,9 @@
         ).join("") +
         "</tr>";
 
-      tbody.innerHTML = rows.map((d) =>
+      tbody.innerHTML = shown.map((d) =>
         "<tr>" +
-        columns.map((c) => {
+        visible.map((c) => {
           const v = d[c.key];
           if (v == null || v === "") return '<td class="' + (c.num ? "num" : "") + '">–</td>';
           const text = c.num && typeof v === "number" && c.key !== "year"
@@ -959,7 +1325,7 @@
       ).join("");
 
       countEl.textContent =
-        fmtInt.format(rows.length) + " von " + fmtInt.format(events.length) + " Veranstaltungen";
+        fmtInt.format(shown.length) + " von " + fmtInt.format(rows.length) + " Veranstaltungen";
 
       thead.querySelectorAll("th").forEach((th) => {
         th.addEventListener("click", () => {
@@ -967,7 +1333,7 @@
           if (key === sortKey) sortDir *= -1;
           else {
             sortKey = key;
-            sortDir = columns.find((c) => c.key === key).num ? -1 : 1;
+            sortDir = visible.find((c) => c.key === key).num ? -1 : 1;
           }
           draw();
         });
@@ -979,23 +1345,8 @@
   }
 
   /* ------------------------------------------------------------------ *
-   *  KPIs & erzählerische Bausteine
+   *  KPIs
    * ------------------------------------------------------------------ */
-
-  function setText(id, text) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = text;
-  }
-
-  function appendFact(id, sentence) {
-    const el = document.getElementById(id);
-    if (!el || el.dataset.factDone) return;
-    el.dataset.factDone = "1";
-    const strong = document.createElement("strong");
-    strong.className = "narrative-fact";
-    strong.textContent = " " + sentence;
-    el.appendChild(strong);
-  }
 
   function animateKpi(el, target, format) {
     if (target == null) { el.textContent = "–"; return; }
@@ -1012,26 +1363,19 @@
   }
 
   function renderKpis(events) {
-    const visitors = d3.sum(events, (d) => d.visitors || 0);
-    const exhibitors = d3.sum(events, (d) => d.exhibitors || 0);
-    const years = Array.from(new Set(events.map((d) => d.year).filter((y) => y != null)));
+    const visitors = d3.sum(events, (d) => d.vis || 0);
+    const exhibitors = d3.sum(events, (d) => d.ex || 0);
+    const cities = new Set(events.filter((d) => d.city).map((d) => d.city + "|" + d.country)).size;
     const kpis = {
       events: [events.length, (v) => fmtInt.format(Math.round(v))],
+      cities: [cities || null, (v) => fmtInt.format(Math.round(v))],
       visitors: [visitors > 0 ? visitors : null, (v) => fmtCompact(v)],
       exhibitors: [exhibitors > 0 ? exhibitors : null, (v) => fmtCompact(v)],
-      years: [years.length || null, (v) => fmtInt.format(Math.round(v))],
     };
     document.querySelectorAll("[data-kpi]").forEach((el) => {
       const [target, format] = kpis[el.dataset.kpi] || [null, fmtInt.format];
       animateKpi(el, target, format);
     });
-    if (years.length) {
-      const el = document.querySelector('[data-kpi="years"]');
-      const range = d3.min(years) + "–" + d3.max(years);
-      setTimeout(() => {
-        el.innerHTML = fmtInt.format(years.length) + " <small>(" + range + ")</small>";
-      }, 1400);
-    }
   }
 
   /* ------------------------------------------------------------------ *
@@ -1111,9 +1455,12 @@
   function renderAllCharts() {
     if (!EVENTS) return;
     renderYears(EVENTS);
+    renderCities(EVENTS);
     renderTimeline(EVENTS);
     renderTop(EVENTS);
+    renderIntl(EVENTS);
     renderScatter(EVENTS);
+    renderBranchen(EVENTS);
   }
 
   function setupResize() {
@@ -1133,10 +1480,7 @@
 
     try {
       const { rows, headers, origin, via } = await loadData();
-      const cols = detectColumns(
-        headers.filter((hh) => hh !== "_id"),
-        rows.slice(0, 50)
-      );
+      const cols = detectColumns(headers.filter((hh) => hh !== "_id"));
       EVENTS = buildEvents(rows, cols);
       if (!EVENTS.length) throw new Error("Datensatz ist leer");
 
